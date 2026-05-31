@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { createEmptyProgress } from '../../src/core/progress/progress';
+import { levelId } from '../../src/core/shared/ids';
 import { App } from '../../src/ui/App';
 
 describe('practice page', () => {
@@ -19,6 +21,22 @@ describe('practice page', () => {
     expect(screen.getByText('kana50.com')).toBeInTheDocument();
     expect(screen.getByText('あ行')).toBeInTheDocument();
     expect(screen.getByText('按空格开始')).toBeInTheDocument();
+  });
+
+  test('loads a saved active kana level from local progress', async () => {
+    localStorage.setItem(
+      'kana50-progress',
+      JSON.stringify({
+        ...createEmptyProgress(),
+        activeLevelId: levelId('hiragana-ka'),
+      }),
+    );
+
+    render(<App />);
+
+    expect(await screen.findByText('预备')).toBeInTheDocument();
+    expect(screen.getByText('か行')).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: '平假名 ka 行' })).toBeInTheDocument();
   });
 
   test('opens the level drawer from the level switch', async () => {
@@ -46,6 +64,16 @@ describe('practice page', () => {
     expect(screen.getByLabelText('当前假名 あ')).toBeInTheDocument();
   });
 
+  test('clicking the main practice stage starts practice', async () => {
+    render(<App />);
+    await screen.findByText('预备');
+
+    fireEvent.click(screen.getByRole('region', { name: '打字练习' }));
+
+    expect(await screen.findByText('练习中')).toBeInTheDocument();
+    expect(screen.getByLabelText('当前假名 あ')).toBeInTheDocument();
+  });
+
   test('typing the first romaji character after start updates the visible input', async () => {
     render(<App />);
     await screen.findByText('预备');
@@ -63,5 +91,9 @@ describe('practice page', () => {
     expect(await screen.findByRole('button', { name: '自学' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '易混淆' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '错题' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '导出' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '导入' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '设置' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '全屏' })).toBeInTheDocument();
   });
 });

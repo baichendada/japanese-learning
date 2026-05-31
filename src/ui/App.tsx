@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { MouseEvent } from 'react';
 import { KanaTrainer } from '../app/KanaTrainer';
 import type { KanaTrainerState } from '../app/KanaTrainer';
 import { BrowserClock } from '../web/adapters/BrowserClock';
@@ -129,7 +130,7 @@ export function App() {
         <TopToolbar />
       </div>
 
-      <section className="practice-stage" aria-label="打字练习">
+      <section className="practice-stage" aria-label="打字练习" onClick={handleStageClick(startPractice)}>
         <KanaLine state={state} visibleInput={visibleInput} onStart={startPractice} />
         <KanaHelper state={state} />
       </section>
@@ -143,6 +144,16 @@ export function App() {
       <ResultDialog state={state} onRestart={startPractice} />
     </main>
   );
+}
+
+function handleStageClick(startPractice: () => Promise<void>) {
+  return (event: MouseEvent<HTMLElement>) => {
+    if (event.target instanceof HTMLButtonElement) {
+      return;
+    }
+
+    void startPractice();
+  };
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
