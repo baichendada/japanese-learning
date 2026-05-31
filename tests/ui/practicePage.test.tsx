@@ -24,13 +24,7 @@ describe('practice page', () => {
   });
 
   test('loads a saved active kana level from local progress', async () => {
-    localStorage.setItem(
-      'kana50-progress',
-      JSON.stringify({
-        ...createEmptyProgress(),
-        activeLevelId: levelId('hiragana-ka'),
-      }),
-    );
+    saveActiveLevel('hiragana-ka');
 
     render(<App />);
 
@@ -64,6 +58,32 @@ describe('practice page', () => {
     expect(screen.getByLabelText('当前假名 あ')).toBeInTheDocument();
   });
 
+  test('Space on the focused level switch opens the drawer without starting practice', async () => {
+    render(<App />);
+
+    const switchButton = await screen.findByRole('button', { name: '切换关卡' });
+    switchButton.focus();
+    fireEvent.keyDown(switchButton, { key: ' ', code: 'Space' });
+    fireEvent.keyUp(switchButton, { key: ' ', code: 'Space' });
+    fireEvent.click(switchButton);
+
+    expect(await screen.findByRole('dialog', { name: '关卡列表' })).toBeInTheDocument();
+    expect(screen.getByText('预备')).toBeInTheDocument();
+    expect(screen.queryByText('练习中')).not.toBeInTheDocument();
+  });
+
+  test('Space on a focused toolbar button does not start practice', async () => {
+    render(<App />);
+
+    const toolbarButton = await screen.findByRole('button', { name: '自学' });
+    toolbarButton.focus();
+    fireEvent.keyDown(toolbarButton, { key: ' ', code: 'Space' });
+    fireEvent.keyUp(toolbarButton, { key: ' ', code: 'Space' });
+
+    await expect(screen.findByText('练习中', undefined, { timeout: 250 })).rejects.toThrow();
+    expect(screen.getByText('预备')).toBeInTheDocument();
+  });
+
   test('clicking the main practice stage starts practice', async () => {
     render(<App />);
     await screen.findByText('预备');
@@ -75,14 +95,49 @@ describe('practice page', () => {
   });
 
   test('typing the first romaji character after start updates the visible input', async () => {
+    saveActiveLevel('hiragana-ka');
     render(<App />);
     await screen.findByText('预备');
 
     fireEvent.keyDown(window, { key: ' ', code: 'Space' });
     await screen.findByText('练习中');
+    fireEvent.keyDown(window, { key: 'k', code: 'KeyK' });
+
+    await waitFor(() => expect(screen.getByLabelText('当前输入')).toHaveTextContent('k'));
+  });
+
+  test('completed ka-row prompt clears visible input and advances to the next kana', async () => {
+    saveActiveLevel('hiragana-ka');
+    render(<App />);
+    await screen.findByText('预备');
+
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' });
+    await screen.findByText('练习中');
+    fireEvent.keyDown(window, { key: 'k', code: 'KeyK' });
+    await waitFor(() => expect(screen.getByLabelText('当前输入')).toHaveTextContent('k'));
     fireEvent.keyDown(window, { key: 'a', code: 'KeyA' });
 
-    await waitFor(() => expect(screen.getByLabelText('当前输入')).toHaveTextContent('a'));
+    await waitFor(() => expect(screen.getByLabelText('当前假名 き')).toBeInTheDocument());
+    expect(screen.getByLabelText('当前输入')).toHaveTextContent('等待输入');
+  });
+
+  test('failed result dialog can restart into a clean running session', async () => {
+    render(<App />);
+    await screen.findByText('预备');
+
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' });
+    await screen.findByText('练习中');
+    fireEvent.keyDown(window, { key: 'x', code: 'KeyX' });
+    fireEvent.keyDown(window, { key: 'y', code: 'KeyY' });
+    fireEvent.keyDown(window, { key: 'z', code: 'KeyZ' });
+    fireEvent.keyDown(window, { key: 'q', code: 'KeyQ' });
+
+    expect(await screen.findByRole('dialog', { name: '本关未通过' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重试本关' }));
+
+    expect(await screen.findByText('练习中')).toBeInTheDocument();
+    expect(screen.getByLabelText('当前假名 あ')).toBeInTheDocument();
+    expect(screen.getByLabelText('当前输入')).toHaveTextContent('等待输入');
   });
 
   test('shows right-top toolbar practice entries', async () => {
@@ -97,3 +152,13 @@ describe('practice page', () => {
     expect(screen.getByRole('button', { name: '全屏' })).toBeInTheDocument();
   });
 });
+
+function saveActiveLevel(activeLevelId: string): void {
+  localStorage.setItem(
+    'kana50-progress',
+    JSON.stringify({
+      ...createEmptyProgress(),
+      activeLevelId: levelId(activeLevelId),
+    }),
+  );
+}

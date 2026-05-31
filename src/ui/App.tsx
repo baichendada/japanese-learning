@@ -76,7 +76,7 @@ export function App() {
 
       const typedCharacter = character.toLowerCase();
       const nextState = await trainer.typeCharacter(typedCharacter);
-      setVisibleInput(nextState.session.currentInput || typedCharacter);
+      setVisibleInput(nextState.session.currentInput);
       applyState(nextState);
     },
     [applyState, trainer],
@@ -84,7 +84,7 @@ export function App() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (isEditableTarget(event.target)) {
+      if (isInteractiveTarget(event.target)) {
         return;
       }
 
@@ -156,10 +156,33 @@ function handleStageClick(startPractice: () => Promise<void>) {
   };
 }
 
-function isEditableTarget(target: EventTarget | null): boolean {
+function isInteractiveTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) {
     return false;
   }
 
-  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+  if (target.isContentEditable) {
+    return true;
+  }
+
+  return (
+    target.closest(
+      [
+        'button',
+        'a[href]',
+        'input',
+        'select',
+        'textarea',
+        'summary',
+        '[contenteditable="true"]',
+        '[role="button"]',
+        '[role="link"]',
+        '[role="menuitem"]',
+        '[role="option"]',
+        '[role="tab"]',
+        '[role="switch"]',
+        '[role="checkbox"]',
+      ].join(','),
+    ) !== null
+  );
 }
