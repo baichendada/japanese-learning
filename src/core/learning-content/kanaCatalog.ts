@@ -1,7 +1,7 @@
 import { kanaId } from '../shared/ids';
 import type { Kana, KanaRowName, KanaScript } from './model';
 
-export const kanaCatalog: readonly Kana[] = [
+const shippedKana: readonly Kana[] = [
   { id: kanaId('hiragana-a'), script: 'hiragana', row: 'a', text: 'あ', romaji: 'a' },
   { id: kanaId('hiragana-i'), script: 'hiragana', row: 'a', text: 'い', romaji: 'i' },
   { id: kanaId('hiragana-u'), script: 'hiragana', row: 'a', text: 'う', romaji: 'u' },
@@ -27,12 +27,14 @@ export const kanaCatalog: readonly Kana[] = [
   { id: kanaId('katakana-u'), script: 'katakana', row: 'a', text: 'ウ', romaji: 'u' },
   { id: kanaId('katakana-e'), script: 'katakana', row: 'a', text: 'エ', romaji: 'e' },
   { id: kanaId('katakana-o'), script: 'katakana', row: 'a', text: 'オ', romaji: 'o' },
-] as const;
+];
+
+export const kanaCatalog: readonly Kana[] = Object.freeze(shippedKana.map((kana) => Object.freeze(kana)));
 
 export function findKanaByText(text: string): Kana | undefined {
   return kanaCatalog.find((kana) => kana.text === text);
 }
 
-export function getKanaRow(script: KanaScript, row: KanaRowName): Kana[] {
-  return kanaCatalog.filter((kana) => kana.script === script && kana.row === row);
+export function getKanaRow(script: KanaScript, row: KanaRowName): readonly Kana[] {
+  return Object.freeze(kanaCatalog.filter((kana) => kana.script === script && kana.row === row));
 }

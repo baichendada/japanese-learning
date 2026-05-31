@@ -15,9 +15,9 @@ export type KanaRowName =
   | 'wa';
 
 export interface Kana {
-  id: KanaId;
-  script: KanaScript;
-  row: KanaRowName;
-  text: string;
-  romaji: string;
+  readonly id: KanaId;
+  readonly script: KanaScript;
+  readonly row: KanaRowName;
+  readonly text: string;
+  readonly romaji: string;
 }
