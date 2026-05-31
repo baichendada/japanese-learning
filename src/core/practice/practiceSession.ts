@@ -1,7 +1,8 @@
 import type { Mistake, PracticePrompt, PracticeSessionState } from './model';
+import type { LevelId } from '../shared/ids';
 
 export interface CreatePracticeSessionInput {
-  readonly levelId: string;
+  readonly levelId: LevelId;
   readonly prompts: readonly PracticePrompt[];
   readonly maxMistakes: number;
   readonly startedAt: number;
@@ -13,6 +14,8 @@ export interface PracticeSession extends PracticeSessionState {
 }
 
 export function createPracticeSession(input: CreatePracticeSessionInput): PracticeSession {
+  validateCreatePracticeSessionInput(input);
+
   return wrap({
     levelId: input.levelId,
     prompts: input.prompts,
@@ -56,7 +59,8 @@ function typeCharacter(
 
   const prompt = state.prompts[state.currentPromptIndex];
   const expectedRomaji = prompt.romaji.toLowerCase();
-  const nextInput = state.currentInput + character.toLowerCase();
+  const validPrefix = findLastValidPrefix(state.currentInput, expectedRomaji);
+  const nextInput = validPrefix + character.toLowerCase();
   const expectedPrefix = expectedRomaji.slice(0, nextInput.length);
 
   if (nextInput !== expectedPrefix) {
@@ -114,4 +118,30 @@ function freezePrompts(prompts: readonly PracticePrompt[]): readonly PracticePro
 
 function freezeMistakes(mistakes: readonly Mistake[]): readonly Mistake[] {
   return Object.freeze(mistakes.map((mistake) => Object.freeze({ ...mistake })));
+}
+
+function validateCreatePracticeSessionInput(input: CreatePracticeSessionInput): void {
+  if (input.prompts.length === 0) {
+    throw new Error('Practice session requires at least one prompt');
+  }
+
+  if (input.prompts.some((prompt) => prompt.romaji.length === 0)) {
+    throw new Error('Practice prompt romaji is required');
+  }
+
+  if (!Number.isInteger(input.maxMistakes) || input.maxMistakes < 1) {
+    throw new Error('Practice session maxMistakes must be at least 1');
+  }
+}
+
+function findLastValidPrefix(input: string, expectedRomaji: string): string {
+  for (let length = Math.min(input.length, expectedRomaji.length); length > 0; length -= 1) {
+    const candidate = input.slice(0, length);
+
+    if (expectedRomaji.startsWith(candidate)) {
+      return candidate;
+    }
+  }
+
+  return '';
 }

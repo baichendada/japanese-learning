@@ -1,3 +1,5 @@
+import type { LevelId } from '../shared/ids';
+
 export type PracticeStatus = 'ready' | 'running' | 'passed' | 'failed';
 
 export interface PracticePrompt {
@@ -13,7 +15,7 @@ export interface Mistake {
 }
 
 export interface PracticeSessionState {
-  readonly levelId: string;
+  readonly levelId: LevelId;
   readonly prompts: readonly PracticePrompt[];
   readonly currentPromptIndex: number;
   readonly currentInput: string;
