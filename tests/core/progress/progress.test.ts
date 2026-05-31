@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { getLevelById } from '../../../src/core/learning-content/levelCatalog';
 import type { UnlockRule } from '../../../src/core/learning-content/levelCatalog';
 import { courseId, levelId } from '../../../src/core/shared/ids';
 import type { LevelResult, ProgressState } from '../../../src/core/progress/model';
@@ -64,6 +65,19 @@ describe('progress aggregate', () => {
     expect(isLevelUnlocked(failedProgress, previousLevelRule)).toBe(false);
   });
 
+  test('does not unlock from imported progress with a non-boolean passed value', () => {
+    const corruptedProgress = {
+      ...createEmptyProgress(),
+      levelResults: [{ ...result(), passed: 'false' }],
+    } as unknown as ProgressState;
+    const previousLevelRule: UnlockRule = {
+      type: 'previous-level-passed',
+      previousLevelId: hiraganaA,
+    };
+
+    expect(isLevelUnlocked(corruptedProgress, previousLevelRule)).toBe(false);
+  });
+
   test('keeps the better result for the same level', () => {
     const progress = recordLevelResult(createEmptyProgress(), result({ stars: 2, accuracy: 0.98 }));
     const afterWorseAttempt = recordLevelResult(progress, result({ stars: 1, accuracy: 1, kanaPerMinute: 120 }));
@@ -96,6 +110,21 @@ describe('progress aggregate', () => {
     expect(newerCompletion.levelResults[0]).toEqual(result({ stars: 2, accuracy: 0.91, kanaPerMinute: 20, completedAt: 1_001 }));
   });
 
+  test('keeps a passed best result over a newer failed result with otherwise tied fields', () => {
+    const importedProgressWithPassedBest = {
+      ...createEmptyProgress(),
+      levelResults: [result({ passed: true, stars: 0, accuracy: 0.9, kanaPerMinute: 30, completedAt: 1_000 })],
+    } as unknown as ProgressState;
+    const afterFailedAttempt = recordLevelResult(
+      importedProgressWithPassedBest,
+      result({ passed: false, stars: 0, accuracy: 0.9, kanaPerMinute: 30, completedAt: 2_000 }),
+    );
+
+    expect(afterFailedAttempt.levelResults).toEqual([
+      result({ passed: true, stars: 0, accuracy: 0.9, kanaPerMinute: 30, completedAt: 1_000 }),
+    ]);
+  });
+
   test('recording a result returns a new state without mutating the previous state', () => {
     const previous = createEmptyProgress();
     const next = recordLevelResult(previous, result({ levelId: hiraganaAReview }));
@@ -106,6 +135,45 @@ describe('progress aggregate', () => {
     expect(previous.activeLevelId).toBe(hiraganaA);
     expect(next.activeLevelId).toBe(hiraganaAReview);
     expect(next.activeCourseId).toBe(hiraganaBasic);
+  });
+
+  test('rejects non-boolean passed values forced through untrusted input', () => {
+    expect(() =>
+      recordLevelResult(createEmptyProgress(), { ...result(), passed: 'false' } as unknown as LevelResult),
+    ).toThrow('passed must be a boolean');
+  });
+
+  test('rejects pass and star combinations that cannot come from valid scoring', () => {
+    expect(() => recordLevelResult(createEmptyProgress(), result({ passed: false, stars: 1 }))).toThrow(
+      'failed results must have zero stars',
+    );
+    expect(() => recordLevelResult(createEmptyProgress(), result({ passed: true, stars: 0 }))).toThrow(
+      'passed results must have at least one star',
+    );
+  });
+
+  test('rejects unknown levels and level-course mismatches', () => {
+    const catalogLevel = getLevelById('hiragana-a');
+
+    if (catalogLevel === undefined) {
+      throw new Error('Expected hiragana-a to be present in the level catalog');
+    }
+
+    expect(() => recordLevelResult(createEmptyProgress(), result({ levelId: levelId('missing-level') }))).toThrow(
+      'Unknown level: missing-level',
+    );
+    expect(() =>
+      recordLevelResult(createEmptyProgress(), result({ levelId: catalogLevel.id, courseId: courseId('missing-course') })),
+    ).toThrow('Level hiragana-a belongs to course hiragana-basic, not missing-course');
+  });
+
+  test('rejects empty level and course ids', () => {
+    expect(() => recordLevelResult(createEmptyProgress(), result({ levelId: levelId('') }))).toThrow(
+      'levelId must not be empty',
+    );
+    expect(() => recordLevelResult(createEmptyProgress(), result({ courseId: courseId('') }))).toThrow(
+      'courseId must not be empty',
+    );
   });
 
   test('rejects invalid level results without corrupting existing progress', () => {

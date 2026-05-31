@@ -1,3 +1,4 @@
+import { getLevelById } from '../learning-content/levelCatalog';
 import type { UnlockRule } from '../learning-content/levelCatalog';
 import { courseId, levelId } from '../shared/ids';
 import type { LevelResult, MistakeStat, ProgressSettings, ProgressState } from './model';
@@ -43,10 +44,14 @@ export function isLevelUnlocked(progress: ProgressState, rule: UnlockRule): bool
     return true;
   }
 
-  return progress.levelResults.some((result) => result.levelId === rule.previousLevelId && result.passed);
+  return progress.levelResults.some((result) => result.levelId === rule.previousLevelId && result.passed === true);
 }
 
 function isBetterLevelResult(candidate: LevelResult, current: LevelResult): boolean {
+  if (candidate.passed !== current.passed) {
+    return candidate.passed;
+  }
+
   if (candidate.stars !== current.stars) {
     return candidate.stars > current.stars;
   }
@@ -63,6 +68,23 @@ function isBetterLevelResult(candidate: LevelResult, current: LevelResult): bool
 }
 
 function validateLevelResult(result: LevelResult): void {
+  validateNonEmptyId(result.levelId, 'levelId');
+  validateNonEmptyId(result.courseId, 'courseId');
+
+  const catalogLevel = getLevelById(result.levelId);
+
+  if (catalogLevel === undefined) {
+    throw new Error(`Unknown level: ${result.levelId}`);
+  }
+
+  if (catalogLevel.courseId !== result.courseId) {
+    throw new Error(`Level ${result.levelId} belongs to course ${catalogLevel.courseId}, not ${result.courseId}`);
+  }
+
+  if (typeof result.passed !== 'boolean') {
+    throw new Error('passed must be a boolean');
+  }
+
   if (!Number.isFinite(result.accuracy) || result.accuracy < 0 || result.accuracy > 1) {
     throw new Error('accuracy must be a finite number between 0 and 1');
   }
@@ -75,8 +97,22 @@ function validateLevelResult(result: LevelResult): void {
     throw new Error('stars must be an integer between 0 and 3');
   }
 
+  if (!result.passed && result.stars > 0) {
+    throw new Error('failed results must have zero stars');
+  }
+
+  if (result.passed && result.stars === 0) {
+    throw new Error('passed results must have at least one star');
+  }
+
   if (!Number.isFinite(result.completedAt)) {
     throw new Error('completedAt must be a finite timestamp');
+  }
+}
+
+function validateNonEmptyId(value: string, fieldName: 'levelId' | 'courseId'): void {
+  if (value.trim() === '') {
+    throw new Error(`${fieldName} must not be empty`);
   }
 }
 
