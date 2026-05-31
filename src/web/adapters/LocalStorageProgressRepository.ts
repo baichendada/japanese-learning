@@ -7,7 +7,13 @@ export class LocalStorageProgressRepository implements ProgressRepository {
   constructor(private readonly key = 'kana50-progress') {}
 
   async load(): Promise<ProgressState> {
-    const savedProgress = localStorage.getItem(this.key);
+    let savedProgress: string | null;
+
+    try {
+      savedProgress = localStorage.getItem(this.key);
+    } catch {
+      return createEmptyProgress();
+    }
 
     if (savedProgress === null) {
       return createEmptyProgress();
@@ -17,6 +23,12 @@ export class LocalStorageProgressRepository implements ProgressRepository {
   }
 
   async save(progress: ProgressState): Promise<void> {
-    localStorage.setItem(this.key, JSON.stringify(progress));
+    const serializedProgress = JSON.stringify(progress);
+
+    try {
+      localStorage.setItem(this.key, serializedProgress);
+    } catch {
+      return;
+    }
   }
 }

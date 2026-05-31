@@ -38,8 +38,13 @@ export class WebAudioService implements AudioService {
       return undefined;
     }
 
-    this.audioContext = new AudioContextConstructor();
-    return this.audioContext;
+    try {
+      this.audioContext = new AudioContextConstructor();
+      return this.audioContext;
+    } catch {
+      this.audioContext = undefined;
+      return undefined;
+    }
   }
 
   private async beep(frequencyHz: number, durationSeconds: number): Promise<void> {
@@ -49,34 +54,63 @@ export class WebAudioService implements AudioService {
       return;
     }
 
-    if (audioContext.state === 'suspended') {
-      await audioContext.resume();
+    let oscillator: OscillatorNode | undefined;
+    let gain: GainNode | undefined;
+
+    try {
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
+
+      await new Promise<void>((resolve) => {
+        oscillator = audioContext.createOscillator();
+        gain = audioContext.createGain();
+        const now = audioContext.currentTime;
+
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(frequencyHz, now);
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(volume, now + 0.005);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + durationSeconds);
+
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+        oscillator.addEventListener('ended', () => resolve(), { once: true });
+        oscillator.start(now);
+        oscillator.stop(now + durationSeconds);
+      });
+    } catch {
+      await this.closeAudioContext();
+    } finally {
+      disconnectNode(oscillator);
+      disconnectNode(gain);
+    }
+  }
+
+  private async closeAudioContext(): Promise<void> {
+    const audioContext = this.audioContext;
+    this.audioContext = undefined;
+
+    if (audioContext === undefined || audioContext.state === 'closed') {
+      return;
     }
 
-    await new Promise<void>((resolve) => {
-      const oscillator = audioContext.createOscillator();
-      const gain = audioContext.createGain();
-      const now = audioContext.currentTime;
+    try {
+      await audioContext.close();
+    } catch {
+      return;
+    }
+  }
+}
 
-      oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(frequencyHz, now);
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(volume, now + 0.005);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + durationSeconds);
+function disconnectNode(node: AudioNode | undefined): void {
+  if (node === undefined) {
+    return;
+  }
 
-      oscillator.connect(gain);
-      gain.connect(audioContext.destination);
-      oscillator.addEventListener(
-        'ended',
-        () => {
-          oscillator.disconnect();
-          gain.disconnect();
-          resolve();
-        },
-        { once: true },
-      );
-      oscillator.start(now);
-      oscillator.stop(now + durationSeconds);
-    });
+  try {
+    node.disconnect();
+  } catch {
+    return;
   }
 }

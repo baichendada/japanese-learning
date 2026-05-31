@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { LevelResult, MistakeStat, ProgressState } from '../../src/core/progress/model';
 import { parseProgressBackup } from '../../src/core/progress/importExport';
 import { createEmptyProgress } from '../../src/core/progress/progress';
@@ -15,8 +15,21 @@ describe('LocalStorageProgressRepository', () => {
     localStorage.clear();
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   test('returns empty progress when no saved progress exists', async () => {
     const repository = new LocalStorageProgressRepository();
+
+    await expect(repository.load()).resolves.toEqual(createEmptyProgress());
+  });
+
+  test('falls back to empty progress when storage access is blocked during load', async () => {
+    const repository = new LocalStorageProgressRepository(storageKey);
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('localStorage blocked', 'SecurityError');
+    });
 
     await expect(repository.load()).resolves.toEqual(createEmptyProgress());
   });
@@ -28,6 +41,15 @@ describe('LocalStorageProgressRepository', () => {
     await repository.save(progress);
 
     await expect(repository.load()).resolves.toEqual(progress);
+  });
+
+  test('save resolves without throwing when storage write is blocked', async () => {
+    const repository = new LocalStorageProgressRepository(storageKey);
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('localStorage quota exceeded', 'QuotaExceededError');
+    });
+
+    await expect(repository.save(savedProgress())).resolves.toBeUndefined();
   });
 
   test('loading invalid saved JSON rejects', async () => {
