@@ -39,6 +39,7 @@ describe('practice session', () => {
     ]);
     expect(session.status).toBe('running');
     expect(session.currentPromptIndex).toBe(0);
+    expect(session.currentInput).toBe('si');
   });
 
   test('returns new immutable session values instead of mutating prior state', () => {

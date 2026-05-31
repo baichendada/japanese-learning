@@ -72,7 +72,7 @@ function typeCharacter(
     return wrap({
       ...state,
       status: failed ? 'failed' : 'running',
-      currentInput: '',
+      currentInput: nextInput,
       mistakes,
       endedAt: failed ? occurredAt : state.endedAt,
     });
