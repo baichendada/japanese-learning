@@ -55,6 +55,45 @@ test('Tab restarts the active practice session with a clean prompt', async ({ pa
   await expect(page.getByLabel('当前输入')).toHaveText('等待输入');
 });
 
+test('Tab in the result dialog focuses retry without restarting practice', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText('按空格开始')).toBeVisible();
+
+  await page.keyboard.press('Space');
+  await expect(page.getByText('练习中')).toBeVisible();
+  await failCurrentPrompt(page);
+
+  const resultDialog = page.getByRole('dialog', { name: '本关未通过' });
+  await expect(resultDialog).toBeVisible();
+
+  await page.keyboard.press('Tab');
+
+  const retryButton = page.getByRole('button', { name: '重试本关' });
+  await expect(resultDialog).toBeVisible();
+  await expect(retryButton).toBeFocused();
+  await expect(page.getByText('练习中')).not.toBeVisible();
+});
+
+test('Tab on a focused control does not restart the running practice session', async ({ page }) => {
+  await loadKaRowProgress(page);
+  await page.goto('/');
+  await expect(page.getByText('按空格开始')).toBeVisible();
+
+  await page.keyboard.press('Space');
+  await expect(page.getByText('练习中')).toBeVisible();
+  await page.keyboard.press('k');
+  await expect(page.getByLabel('当前输入')).toHaveText('k');
+
+  const toolbarButton = page.getByRole('button', { name: '自学' });
+  await toolbarButton.focus();
+  await expect(toolbarButton).toBeFocused();
+  await page.keyboard.press('Tab');
+
+  await expect(page.getByText('练习中')).toBeVisible();
+  await expect(page.getByLabel('当前假名 か')).toBeVisible();
+  await expect(page.getByLabel('当前输入')).toHaveText('k');
+});
+
 async function loadKaRowProgress(page: Page) {
   await page.addInitScript(() => {
     window.localStorage.setItem(
@@ -73,4 +112,11 @@ async function loadKaRowProgress(page: Page) {
       }),
     );
   });
+}
+
+async function failCurrentPrompt(page: Page) {
+  await page.keyboard.press('x');
+  await page.keyboard.press('y');
+  await page.keyboard.press('z');
+  await page.keyboard.press('q');
 }

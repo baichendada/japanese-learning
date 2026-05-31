@@ -101,7 +101,7 @@ export function App() {
       }
 
       if (event.key === 'Tab') {
-        if (stateRef.current?.status !== 'ready') {
+        if (stateRef.current?.status === 'running') {
           event.preventDefault();
           void restartPractice();
         }

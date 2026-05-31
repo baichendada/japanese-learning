@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { KanaTrainerState } from '../../app/KanaTrainer';
 
 interface ResultDialogProps {
@@ -6,6 +7,14 @@ interface ResultDialogProps {
 }
 
 export function ResultDialog({ state, onRestart }: ResultDialogProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (state.status === 'passed' || state.status === 'failed') {
+      dialogRef.current?.focus();
+    }
+  }, [state.status]);
+
   if (state.status !== 'passed' && state.status !== 'failed') {
     return null;
   }
@@ -13,7 +22,14 @@ export function ResultDialog({ state, onRestart }: ResultDialogProps) {
   const result = state.lastResult;
 
   return (
-    <div className="result-dialog" role="dialog" aria-modal="true" aria-labelledby="result-title">
+    <div
+      ref={dialogRef}
+      className="result-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="result-title"
+      tabIndex={-1}
+    >
       <h2 id="result-title">{state.status === 'passed' ? '通关成功' : '本关未通过'}</h2>
 
       {result !== undefined ? (
