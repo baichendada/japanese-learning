@@ -65,7 +65,7 @@ function parseProgressState(value: unknown): ProgressState {
   }
 
   const levelResults = mergeLevelResults([], record.levelResults.map(parseLevelResult));
-  const mistakeStats = record.mistakeStats.map(parseMistakeStat);
+  const mistakeStats = mergeMistakeStats([], record.mistakeStats.map(parseMistakeStat));
   const parsedSettings = parseSettings(record.settings);
 
   return freezeProgress({
@@ -192,6 +192,10 @@ function validateMistakeStat(stat: MistakeStat, index = 0): MistakeStat {
     throw new Error(`${prefix}.count must be a positive integer`);
   }
 
+  if (!Number.isSafeInteger(stat.count)) {
+    throw new Error(`${prefix}.count must be a safe positive integer`);
+  }
+
   if (!Number.isFinite(stat.lastMistakeAt)) {
     throw new Error(`${prefix}.lastMistakeAt must be a finite timestamp`);
   }
@@ -273,12 +277,22 @@ function mergeMistakeStats(localStats: readonly MistakeStat[], importedStats: re
     const existing = merged[existingIndex];
     merged[existingIndex] = {
       ...existing,
-      count: existing.count + stat.count,
+      count: addMistakeCounts(existing.count, stat.count),
       lastMistakeAt: Math.max(existing.lastMistakeAt, stat.lastMistakeAt),
     };
   }
 
   return merged;
+}
+
+function addMistakeCounts(left: number, right: number): number {
+  const count = left + right;
+
+  if (!Number.isSafeInteger(count)) {
+    throw new Error('mistake count merge would exceed Number.MAX_SAFE_INTEGER');
+  }
+
+  return count;
 }
 
 function isBetterLevelResult(candidate: LevelResult, current: LevelResult): boolean {

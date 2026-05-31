@@ -131,9 +131,53 @@ describe('progress import and export merge', () => {
     ['empty kanaText', { mistakeStats: [mistakeStat({ kanaText: '' })] }, 'mistakeStats[0].kanaText must not be empty'],
     ['empty expectedRomaji', { mistakeStats: [mistakeStat({ expectedRomaji: '' })] }, 'mistakeStats[0].expectedRomaji must not be empty'],
     ['zero mistake count', { mistakeStats: [mistakeStat({ count: 0 })] }, 'mistakeStats[0].count must be a positive integer'],
+    [
+      'unsafe mistake count',
+      { mistakeStats: [mistakeStat({ count: Number.MAX_SAFE_INTEGER + 1 })] },
+      'mistakeStats[0].count must be a safe positive integer',
+    ],
     ['non-finite mistake timestamp', { mistakeStats: [{ ...mistakeStat(), lastMistakeAt: null as unknown as number }] }, 'mistakeStats[0].lastMistakeAt must be a finite timestamp'],
   ])('parse rejects malformed progress: %s', (_caseName, overrides, message) => {
     expect(() => parseProgressBackup(backupJson(overrides as Partial<ProgressState>))).toThrow(message);
+  });
+
+  test('parse canonicalizes duplicate mistake stats by summing counts and keeping the latest timestamp', () => {
+    const parsed = parseProgressBackup(
+      backupJson({
+        mistakeStats: [
+          mistakeStat({ count: 2, lastMistakeAt: 1_000 }),
+          mistakeStat({ count: 3, lastMistakeAt: 2_000 }),
+          mistakeStat({ kanaText: 'ki', expectedRomaji: 'ki', count: 4, lastMistakeAt: 1_500 }),
+        ],
+      }),
+    );
+
+    expect(parsed.mistakeStats).toEqual([
+      mistakeStat({ count: 5, lastMistakeAt: 2_000 }),
+      mistakeStat({ kanaText: 'ki', expectedRomaji: 'ki', count: 4, lastMistakeAt: 1_500 }),
+    ]);
+  });
+
+  test('merge rejects mistake count overflow beyond a safe integer', () => {
+    expect(() =>
+      mergeProgress(
+        progress({ mistakeStats: [mistakeStat({ count: Number.MAX_SAFE_INTEGER })] }),
+        progress({ mistakeStats: [mistakeStat({ count: 1 })] }),
+      ),
+    ).toThrow('mistake count merge would exceed Number.MAX_SAFE_INTEGER');
+  });
+
+  test('merge result survives a JSON stringify and parse round trip', () => {
+    const merged = mergeProgress(
+      progress({ mistakeStats: [mistakeStat({ count: 2, lastMistakeAt: 1_000 })] }),
+      progress({
+        activeLevelId: hiraganaKa,
+        mistakeStats: [mistakeStat({ count: 3, lastMistakeAt: 2_000 })],
+        settings: settings({ keySoundEnabled: false }),
+      }),
+    );
+
+    expect(parseProgressBackup(JSON.stringify(merged))).toEqual(merged);
   });
 
   test('merge does not mutate local or imported progress', () => {
@@ -170,5 +214,38 @@ describe('progress import and export merge', () => {
     );
 
     expect(merged.levelResults).toEqual([localBest]);
+  });
+
+  test('merge keeps passed results over failed imported results and applies Task 6 tie-breakers', () => {
+    const passedLocal = levelResult({ levelId: hiraganaA, passed: true, stars: 1, accuracy: 0.9, kanaPerMinute: 8 });
+    const failedImported = levelResult({
+      levelId: hiraganaA,
+      passed: false,
+      stars: 0,
+      accuracy: 1,
+      kanaPerMinute: 120,
+      completedAt: 3_000,
+    });
+    const localAccuracyBest = levelResult({
+      levelId: hiraganaAReview,
+      stars: 2,
+      accuracy: 0.91,
+      kanaPerMinute: 40,
+      completedAt: 1_000,
+    });
+    const importedAccuracyBest = levelResult({
+      levelId: hiraganaAReview,
+      stars: 2,
+      accuracy: 0.92,
+      kanaPerMinute: 10,
+      completedAt: 900,
+    });
+
+    const merged = mergeProgress(
+      progress({ levelResults: [passedLocal, localAccuracyBest] }),
+      progress({ levelResults: [failedImported, importedAccuracyBest] }),
+    );
+
+    expect(merged.levelResults).toEqual([passedLocal, importedAccuracyBest]);
   });
 });
