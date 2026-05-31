@@ -14,8 +14,7 @@ export interface ReviewPractice {
 export function createReviewPractice(input: CreateReviewPracticeInput): ReviewPractice {
   validateMaxPrompts(input.maxPrompts);
 
-  const prompts = [...input.mistakeStats]
-    .map(validateMistakeStat)
+  const prompts = validateMistakeStats(input.mistakeStats)
     .sort(compareMistakeStats)
     .slice(0, input.maxPrompts)
     .map((stat) =>
@@ -45,28 +44,58 @@ function validateMaxPrompts(maxPrompts: number): void {
   }
 }
 
-function validateMistakeStat(stat: MistakeStat, index: number): MistakeStat {
+function validateMistakeStats(mistakeStats: unknown): MistakeStat[] {
+  if (!Array.isArray(mistakeStats)) {
+    throw new Error('mistakeStats must be an array');
+  }
+
+  return mistakeStats.map(validateMistakeStat);
+}
+
+function validateMistakeStat(stat: unknown, index: number): MistakeStat {
   const prefix = `mistakeStats[${index}]`;
 
-  if (stat.kanaText.length === 0) {
-    throw new Error(`${prefix}.kanaText must not be empty`);
+  if (!isObject(stat)) {
+    throw new Error(`${prefix} must be an object`);
   }
 
-  if (stat.expectedRomaji.length === 0) {
-    throw new Error(`${prefix}.expectedRomaji must not be empty`);
-  }
+  const kanaText = validateNonEmptyString(stat.kanaText, `${prefix}.kanaText`);
+  const expectedRomaji = validateNonEmptyString(stat.expectedRomaji, `${prefix}.expectedRomaji`);
+  const count = stat.count;
+  const lastMistakeAt = stat.lastMistakeAt;
 
-  if (!Number.isInteger(stat.count) || stat.count < 1) {
+  if (typeof count !== 'number' || !Number.isInteger(count) || count < 1) {
     throw new Error(`${prefix}.count must be a positive integer`);
   }
 
-  if (!Number.isSafeInteger(stat.count)) {
+  if (!Number.isSafeInteger(count)) {
     throw new Error(`${prefix}.count must be a safe positive integer`);
   }
 
-  if (!Number.isFinite(stat.lastMistakeAt)) {
+  if (typeof lastMistakeAt !== 'number' || !Number.isFinite(lastMistakeAt)) {
     throw new Error(`${prefix}.lastMistakeAt must be a finite timestamp`);
   }
 
-  return stat;
+  return {
+    kanaText,
+    expectedRomaji,
+    count,
+    lastMistakeAt,
+  };
+}
+
+function validateNonEmptyString(value: unknown, fieldName: string): string {
+  if (typeof value !== 'string') {
+    throw new Error(`${fieldName} must be a string`);
+  }
+
+  if (value.trim().length === 0) {
+    throw new Error(`${fieldName} must not be empty`);
+  }
+
+  return value;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

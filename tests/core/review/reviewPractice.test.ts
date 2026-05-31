@@ -118,9 +118,43 @@ describe('review practice', () => {
     ).toThrow(message);
   });
 
+  test('rejects non-array mistakeStats with a clear validation error', () => {
+    expect(() =>
+      createReviewPractice({
+        mistakeStats: {} as unknown as readonly MistakeStat[],
+        maxPrompts: 10,
+      }),
+    ).toThrow('mistakeStats must be an array');
+  });
+
+  test('rejects non-object mistake stats with a clear validation error', () => {
+    expect(() =>
+      createReviewPractice({
+        mistakeStats: ['not-a-stat' as unknown as MistakeStat],
+        maxPrompts: 10,
+      }),
+    ).toThrow('mistakeStats[0] must be an object');
+  });
+
   test.each([
     ['empty kanaText', mistakeStat({ kanaText: '' }), 'mistakeStats[0].kanaText must not be empty'],
+    [
+      'non-string kanaText',
+      mistakeStat({ kanaText: 42 as unknown as string }),
+      'mistakeStats[0].kanaText must be a string',
+    ],
+    ['whitespace-only kanaText', mistakeStat({ kanaText: '   ' }), 'mistakeStats[0].kanaText must not be empty'],
     ['empty expectedRomaji', mistakeStat({ expectedRomaji: '' }), 'mistakeStats[0].expectedRomaji must not be empty'],
+    [
+      'non-string expectedRomaji',
+      mistakeStat({ expectedRomaji: 42 as unknown as string }),
+      'mistakeStats[0].expectedRomaji must be a string',
+    ],
+    [
+      'whitespace-only expectedRomaji',
+      mistakeStat({ expectedRomaji: '   ' }),
+      'mistakeStats[0].expectedRomaji must not be empty',
+    ],
     ['zero count', mistakeStat({ count: 0 }), 'mistakeStats[0].count must be a positive integer'],
     [
       'unsafe count',
