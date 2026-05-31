@@ -1,6 +1,16 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, relative, resolve } from 'node:path';
+import * as ts from 'typescript';
 import { describe, expect, test } from 'vitest';
 import type { MistakeStat } from '../../../src/core/progress/model';
 import { createReviewPractice } from '../../../src/core/review/reviewPractice';
+
+function projectImportPath(fromDirectory: string, projectPath: string): string {
+  const importPath = relative(fromDirectory, resolve(process.cwd(), projectPath)).replace(/\\/g, '/');
+
+  return importPath.startsWith('.') ? importPath : `./${importPath}`;
+}
 
 describe('review practice', () => {
   function mistakeStat(overrides: Partial<MistakeStat> = {}): MistakeStat {
@@ -168,5 +178,69 @@ describe('review practice', () => {
     ],
   ])('rejects invalid mistake stat fields: %s', (_caseName, stat, message) => {
     expect(() => createReviewPractice({ mistakeStats: [stat], maxPrompts: 10 })).toThrow(message);
+  });
+
+  test('provides a branded level id that can start a practice session without casts', () => {
+    const tempDirectory = mkdtempSync(join(tmpdir(), 'review-practice-types-'));
+    const contractPath = join(tempDirectory, 'reviewPractice.contract.ts');
+    const reviewPracticeImport = projectImportPath(tempDirectory, 'src/core/review/reviewPractice');
+    const practiceSessionImport = projectImportPath(tempDirectory, 'src/core/practice/practiceSession');
+    const idsImport = projectImportPath(tempDirectory, 'src/core/shared/ids');
+
+    const contractSource = `
+      import { createPracticeSession } from '${practiceSessionImport}';
+      import { createReviewPractice } from '${reviewPracticeImport}';
+      import type { LevelId } from '${idsImport}';
+
+      const review = createReviewPractice({
+        mistakeStats: [
+          {
+            kanaText: '\\u3057',
+            expectedRomaji: 'shi',
+            count: 2,
+            lastMistakeAt: 1_000,
+          },
+        ],
+        maxPrompts: 10,
+      });
+
+      const reviewLevelId: LevelId = review.levelId;
+
+      createPracticeSession({
+        levelId: review.levelId,
+        prompts: review.prompts,
+        maxMistakes: 4,
+        startedAt: 2_000,
+      });
+
+      void reviewLevelId;
+    `;
+
+    let diagnosticsText = '';
+
+    try {
+      writeFileSync(contractPath, contractSource);
+
+      const program = ts.createProgram([contractPath], {
+        noEmit: true,
+        strict: true,
+        target: ts.ScriptTarget.ES2022,
+        module: ts.ModuleKind.ESNext,
+        moduleResolution: ts.ModuleResolutionKind.Bundler,
+        skipLibCheck: true,
+        types: [],
+      });
+      const diagnostics = ts.getPreEmitDiagnostics(program);
+
+      diagnosticsText = ts.formatDiagnosticsWithColorAndContext(diagnostics, {
+        getCanonicalFileName: (fileName) => fileName,
+        getCurrentDirectory: () => process.cwd(),
+        getNewLine: () => '\n',
+      });
+    } finally {
+      rmSync(tempDirectory, { recursive: true, force: true });
+    }
+
+    expect(diagnosticsText).toBe('');
   });
 });

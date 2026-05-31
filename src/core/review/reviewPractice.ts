@@ -1,5 +1,6 @@
 import type { PracticePrompt } from '../practice/model';
 import type { MistakeStat } from '../progress/model';
+import { levelId, type LevelId } from '../shared/ids';
 
 export interface CreateReviewPracticeInput {
   readonly mistakeStats: readonly MistakeStat[];
@@ -7,9 +8,11 @@ export interface CreateReviewPracticeInput {
 }
 
 export interface ReviewPractice {
-  readonly levelId: 'review-mistakes';
+  readonly levelId: LevelId;
   readonly prompts: readonly PracticePrompt[];
 }
+
+export const reviewMistakesLevelId = levelId('review-mistakes');
 
 export function createReviewPractice(input: CreateReviewPracticeInput): ReviewPractice {
   validateMaxPrompts(input.maxPrompts);
@@ -25,7 +28,7 @@ export function createReviewPractice(input: CreateReviewPracticeInput): ReviewPr
     );
 
   return Object.freeze({
-    levelId: 'review-mistakes',
+    levelId: reviewMistakesLevelId,
     prompts: Object.freeze(prompts),
   });
 }
