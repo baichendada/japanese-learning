@@ -66,6 +66,18 @@ export function App() {
     applyState(nextState);
   }, [applyState, trainer]);
 
+  const restartPractice = useCallback(async () => {
+    const current = stateRef.current;
+
+    if (current === undefined || current.status === 'ready') {
+      return;
+    }
+
+    const nextState = await trainer.restart();
+    setVisibleInput('');
+    applyState(nextState);
+  }, [applyState, trainer]);
+
   const typeCharacter = useCallback(
     async (character: string) => {
       const current = stateRef.current;
@@ -88,6 +100,15 @@ export function App() {
         return;
       }
 
+      if (event.key === 'Tab') {
+        if (stateRef.current?.status !== 'ready') {
+          event.preventDefault();
+          void restartPractice();
+        }
+
+        return;
+      }
+
       if (event.code === 'Space' || event.key === ' ') {
         event.preventDefault();
         void startPractice();
@@ -103,7 +124,7 @@ export function App() {
     window.addEventListener('keydown', handleKeyDown);
 
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [startPractice, typeCharacter]);
+  }, [restartPractice, startPractice, typeCharacter]);
 
   if (loadError !== undefined) {
     return (
