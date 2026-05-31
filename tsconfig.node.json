@@ -6,7 +6,7 @@
     "allowSyntheticDefaultImports": true,
     "outDir": "node_modules/.cache/tsconfig-node",
     "tsBuildInfoFile": "node_modules/.cache/tsconfig-node/tsconfig.node.tsbuildinfo",
-    "types": ["node"]
+    "types": ["node", "vitest/config"]
   },
   "include": ["vite.config.ts", "playwright.config.ts"]
 }
