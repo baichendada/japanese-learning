@@ -1,7 +1,9 @@
 import { courseId, levelId } from '../shared/ids';
 import type { CourseId, LevelId } from '../shared/ids';
 
-export type UnlockRule = { type: 'always' } | { type: 'previous-level-passed'; previousLevelId: string };
+export type UnlockRule =
+  | { readonly type: 'always' }
+  | { readonly type: 'previous-level-passed'; readonly previousLevelId: LevelId };
 
 export interface Level {
   readonly id: LevelId;
@@ -50,7 +52,7 @@ const hiraganaBasicLevels = Object.freeze([
     kanaTexts: hiraganaARow,
     passAccuracy,
     maxMistakes,
-    unlock: { type: 'previous-level-passed', previousLevelId: 'hiragana-a' },
+    unlock: { type: 'previous-level-passed', previousLevelId: levelId('hiragana-a') },
   }),
   freezeLevel({
     id: levelId('hiragana-ka'),
@@ -59,7 +61,7 @@ const hiraganaBasicLevels = Object.freeze([
     kanaTexts: ['か', 'き', 'く', 'け', 'こ'],
     passAccuracy,
     maxMistakes,
-    unlock: { type: 'previous-level-passed', previousLevelId: 'hiragana-a-review' },
+    unlock: { type: 'previous-level-passed', previousLevelId: levelId('hiragana-a-review') },
   }),
 ]);
 
