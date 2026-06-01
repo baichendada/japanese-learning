@@ -53,6 +53,22 @@ describe('practice session', () => {
     expect(session.currentInput).toBe('si');
   });
 
+  test('backspace removes the last typed character without recording a mistake', () => {
+    const session = createPracticeSession({
+      levelId: levelId('hiragana-ka'),
+      prompts: [{ kanaText: 'け', romaji: 'ke' }],
+      maxMistakes: 4,
+      startedAt: 1000,
+    })
+      .typeCharacter('k', 1100)
+      .typeCharacter('x', 1200)
+      .backspace();
+
+    expect(session.currentInput).toBe('k');
+    expect(session.mistakes).toHaveLength(1);
+    expect(session.status).toBe('running');
+  });
+
   test('recovers from visible wrong input by continuing from the last valid prefix', () => {
     const mistaken = createPracticeSession({
       levelId: levelId('hiragana-sa'),
@@ -195,7 +211,7 @@ describe('practice session', () => {
       startedAt: 1000,
     }).typeCharacter('x', 1100);
 
-    const reset = failed.reset(2000);
+    const reset = failed.reset();
 
     expect(reset).not.toBe(failed);
     expect(reset).toMatchObject({
@@ -204,12 +220,23 @@ describe('practice session', () => {
       currentPromptIndex: 0,
       completedPrompts: 0,
       maxMistakes: 1,
-      startedAt: 2000,
       status: 'running',
     });
+    expect(reset.startedAt).toBeUndefined();
     expect(reset.prompts).toEqual([{ kanaText: 'し', romaji: 'shi' }]);
     expect(reset.mistakes).toEqual([]);
     expect(reset.endedAt).toBeUndefined();
+  });
+
+  test('starts the timer on the first typed character when startedAt is omitted', () => {
+    const session = createPracticeSession({
+      levelId: levelId('hiragana-ka'),
+      prompts: [{ kanaText: 'け', romaji: 'ke' }],
+      maxMistakes: 4,
+    }).typeCharacter('k', 1100);
+
+    expect(session.startedAt).toBe(1100);
+    expect(session.currentInput).toBe('k');
   });
 
   test('requires branded LevelId values at the practice session boundary', () => {

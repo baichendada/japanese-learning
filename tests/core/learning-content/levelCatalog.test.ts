@@ -119,11 +119,20 @@ describe('level catalog', () => {
   });
 
   test('ships MVP pass thresholds on every level', () => {
-    expect(courseLevels().map(({ level }) => [level.passAccuracy, level.maxMistakes])).toEqual([
-      [0.9, 4],
-      [0.9, 4],
-      [0.9, 4],
-    ]);
+    for (const { level } of courseLevels()) {
+      expect(level.passAccuracy).toBe(0.9);
+      expect(level.maxMistakes).toBe(4);
+    }
+  });
+
+  test('ships the full hiragana and katakana gojuon progression', () => {
+    const hiraganaCourse = getCourse('hiragana-basic');
+    const katakanaCourse = getCourse('katakana-basic');
+
+    expect(hiraganaCourse.levels).toHaveLength(20);
+    expect(katakanaCourse.levels).toHaveLength(20);
+    expect(hiraganaCourse.levels.at(-1)?.name).toBe('わ行复习');
+    expect(katakanaCourse.levels.at(-1)?.name).toBe('ワ行复习');
   });
 
   test('ships the hiragana ka-row kana for the ka level', () => {

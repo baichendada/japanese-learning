@@ -6,11 +6,14 @@ import { createPracticeSession } from '../core/practice/practiceSession';
 import type { PracticeSession } from '../core/practice/practiceSession';
 import type { PracticePrompt, PracticeStatus } from '../core/practice/model';
 import { scorePracticeSession } from '../core/practice/scoring';
-import type { LevelResult, ProgressState } from '../core/progress/model';
-import { recordLevelResult } from '../core/progress/progress';
+import { mergeProgress, parseProgressBackup } from '../core/progress/importExport';
+import type { LevelResult, ProgressSettings, ProgressState } from '../core/progress/model';
+import { getNextPlayableLevel, isLevelUnlocked, recordLevelResult } from '../core/progress/progress';
+import { createReviewPractice } from '../core/review/reviewPractice';
 import type { Clock } from '../core/shared/clock';
+import type { LevelId } from '../core/shared/ids';
 
-export type KanaTrainerStatus = 'ready' | 'running' | 'passed' | 'failed';
+export type KanaTrainerStatus = 'ready' | 'running' | 'paused' | 'passed' | 'failed';
 
 export interface KanaTrainerState {
   readonly progress: ProgressState;
@@ -18,6 +21,7 @@ export interface KanaTrainerState {
   readonly session: PracticeSession;
   readonly status: KanaTrainerStatus;
   readonly lastResult?: LevelResult;
+  readonly hasNextLevel: boolean;
 }
 
 export class KanaTrainer {
@@ -34,7 +38,13 @@ export class KanaTrainer {
     const currentLevel = requireActiveLevel(progress.activeLevelId);
     const session = this.createSession(currentLevel);
 
-    return this.storeState({ progress, currentLevel, session, status: 'ready' });
+    return this.storeState({
+      progress,
+      currentLevel,
+      session,
+      status: 'ready',
+      hasNextLevel: getNextPlayableLevel(progress, currentLevel.id) !== undefined,
+    });
   }
 
   async start(): Promise<KanaTrainerState> {
@@ -53,10 +63,137 @@ export class KanaTrainer {
     return this.start();
   }
 
+  pause(): KanaTrainerState {
+    const current = this.requireLoaded();
+
+    if (current.status !== 'running') {
+      return current;
+    }
+
+    return this.storeState({ ...current, status: 'paused' });
+  }
+
+  resume(): KanaTrainerState {
+    const current = this.requireLoaded();
+
+    if (current.status !== 'paused') {
+      return current;
+    }
+
+    return this.storeState({ ...current, status: 'running' });
+  }
+
+  async changeLevel(levelId: LevelId): Promise<KanaTrainerState> {
+    const current = this.requireLoaded();
+    const level = getLevelById(levelId);
+
+    if (level === undefined) {
+      throw new Error(`Unknown level: ${levelId}`);
+    }
+
+    if (!isLevelUnlocked(current.progress, level.unlock)) {
+      throw new Error(`Level ${levelId} is locked`);
+    }
+
+    const progress = Object.freeze({
+      ...current.progress,
+      activeCourseId: level.courseId,
+      activeLevelId: level.id,
+      settings: { ...current.progress.settings },
+      levelResults: current.progress.levelResults,
+      mistakeStats: current.progress.mistakeStats,
+    });
+    const session = this.createSession(level);
+    const nextState = this.storeState({
+      progress,
+      currentLevel: level,
+      session,
+      status: 'ready',
+      lastResult: undefined,
+      hasNextLevel: getNextPlayableLevel(progress, level.id) !== undefined,
+    });
+
+    try {
+      await this.progressRepository.save(progress);
+    } catch {
+      return nextState;
+    }
+
+    return nextState;
+  }
+
+  async updateSettings(settings: ProgressSettings): Promise<KanaTrainerState> {
+    const current = this.requireLoaded();
+    const progress = Object.freeze({
+      ...current.progress,
+      settings: Object.freeze({ ...settings }),
+      levelResults: current.progress.levelResults,
+      mistakeStats: current.progress.mistakeStats,
+    });
+    const nextState = this.storeState({ ...current, progress });
+
+    try {
+      await this.progressRepository.save(progress);
+    } catch {
+      return nextState;
+    }
+
+    return nextState;
+  }
+
+  async importProgress(json: string): Promise<KanaTrainerState> {
+    const current = this.requireLoaded();
+    const imported = parseProgressBackup(json);
+    const progress = mergeProgress(current.progress, imported);
+    const currentLevel = requireActiveLevel(progress.activeLevelId);
+    const session = this.createSession(currentLevel);
+    const nextState = this.storeState({
+      progress,
+      currentLevel,
+      session,
+      status: 'ready',
+      lastResult: undefined,
+      hasNextLevel: getNextPlayableLevel(progress, currentLevel.id) !== undefined,
+    });
+
+    try {
+      await this.progressRepository.save(progress);
+    } catch {
+      return nextState;
+    }
+
+    return nextState;
+  }
+
+  async startMistakeReview(): Promise<KanaTrainerState> {
+    const current = this.requireLoaded();
+    const review = createReviewPractice({
+      mistakeStats: current.progress.mistakeStats,
+      maxPrompts: 20,
+    });
+
+    if (review.prompts.length === 0) {
+      throw new Error('No mistakes to review');
+    }
+
+    const session = createPracticeSession({
+      levelId: review.levelId,
+      prompts: review.prompts,
+      maxMistakes: 4,
+    });
+
+    return this.storeState({
+      ...current,
+      session,
+      status: 'running',
+      lastResult: undefined,
+    });
+  }
+
   async typeCharacter(character: string): Promise<KanaTrainerState> {
     const current = this.requireStarted();
 
-    if (current.status === 'passed' || current.status === 'failed') {
+    if (current.status !== 'running') {
       return current;
     }
 
@@ -65,10 +202,11 @@ export class KanaTrainer {
     const nextSession = current.session.typeCharacter(character, this.clock.now());
 
     if (isTerminalTransition(current.session.status, nextSession.status) && nextSession.endedAt !== undefined) {
+      const startedAt = nextSession.startedAt ?? nextSession.endedAt;
       const score = scorePracticeSession({
         completedPrompts: nextSession.completedPrompts,
         mistakeCount: nextSession.mistakes.length,
-        startedAt: nextSession.startedAt,
+        startedAt,
         endedAt: nextSession.endedAt,
         passAccuracy: current.currentLevel.passAccuracy,
       });
@@ -81,13 +219,35 @@ export class KanaTrainer {
         stars: score.stars,
         completedAt: nextSession.endedAt,
       };
-      const progress = recordLevelResult(current.progress, result);
+      let progress = recordLevelResult(current.progress, result);
+      let nextLevel = current.currentLevel;
+      let sessionForNext = nextSession;
+
+      if (result.passed) {
+        const playableNextLevel = getNextPlayableLevel(progress, current.currentLevel.id);
+
+        if (playableNextLevel !== undefined) {
+          progress = Object.freeze({
+            ...progress,
+            activeCourseId: playableNextLevel.courseId,
+            activeLevelId: playableNextLevel.id,
+            settings: { ...progress.settings },
+            levelResults: progress.levelResults,
+            mistakeStats: progress.mistakeStats,
+          });
+          nextLevel = playableNextLevel;
+          sessionForNext = this.createSession(playableNextLevel);
+        }
+      }
+
       const nextState = this.storeState({
         ...current,
         progress,
-        session: nextSession,
+        currentLevel: nextLevel,
+        session: sessionForNext,
         status: result.passed ? 'passed' : 'failed',
         lastResult: result,
+        hasNextLevel: getNextPlayableLevel(progress, nextLevel.id) !== undefined,
       });
 
       try {
@@ -98,6 +258,20 @@ export class KanaTrainer {
 
       return nextState;
     }
+
+    return this.storeState({ ...current, session: nextSession, status: 'running' });
+  }
+
+  backspace(): KanaTrainerState {
+    const current = this.requireStarted();
+
+    if (current.status !== 'running') {
+      return current;
+    }
+
+    playKeyFailSoft(this.audioService);
+
+    const nextSession = current.session.backspace();
 
     return this.storeState({ ...current, session: nextSession, status: 'running' });
   }
@@ -113,7 +287,6 @@ export class KanaTrainer {
       levelId: level.id,
       prompts: createPrompts(level),
       maxMistakes: level.maxMistakes,
-      startedAt: this.clock.now(),
     });
   }
 

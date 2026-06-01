@@ -4,9 +4,10 @@ import type { KanaTrainerState } from '../../app/KanaTrainer';
 interface ResultDialogProps {
   readonly state: KanaTrainerState;
   readonly onRestart: () => void;
+  readonly onNextLevel: () => void;
 }
 
-export function ResultDialog({ state, onRestart }: ResultDialogProps) {
+export function ResultDialog({ state, onRestart, onNextLevel }: ResultDialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -20,6 +21,8 @@ export function ResultDialog({ state, onRestart }: ResultDialogProps) {
   }
 
   const result = state.lastResult;
+  const passedWithNextLevel =
+    state.status === 'passed' && result !== undefined && result.levelId !== state.currentLevel.id;
 
   return (
     <div
@@ -49,9 +52,18 @@ export function ResultDialog({ state, onRestart }: ResultDialogProps) {
         </dl>
       ) : null}
 
-      <button type="button" className="primary-button" aria-label="重试本关" onClick={onRestart}>
-        重试本关
-      </button>
+      {passedWithNextLevel ? (
+        <>
+          <p className="result-dialog__hint">下一关：{state.currentLevel.name}，按空格或点击下方按钮继续。</p>
+          <button type="button" className="primary-button" aria-label="进入下一关" onClick={onNextLevel}>
+            进入下一关
+          </button>
+        </>
+      ) : (
+        <button type="button" className="primary-button" aria-label="重试本关" onClick={onRestart}>
+          重试本关
+        </button>
+      )}
     </div>
   );
 }

@@ -45,15 +45,17 @@ describe('KanaTrainer', () => {
     expect(state.session.prompts).toEqual(promptsForLevel(currentLevel));
   });
 
-  test('start resets the session timer and switches app status to running', async () => {
-    const trainer = new KanaTrainer(createRepository(progressForLevel(hiraganaKa)), createAudio(), createClock(1_000, 61_000));
+  test('start activates running state without starting the session timer', async () => {
+    const trainer = new KanaTrainer(createRepository(progressForLevel(hiraganaKa)), createAudio(), createClock(1_100));
 
     const loaded = await trainer.load();
     const started = await trainer.start();
+    const afterFirstKey = await trainer.typeCharacter(started.session.prompts[0].romaji[0]);
 
     expect(loaded.status).toBe('ready');
     expect(started.status).toBe('running');
-    expect(started.session.startedAt).toBe(61_000);
+    expect(started.session.startedAt).toBeUndefined();
+    expect(afterFirstKey.session.startedAt).toBe(1_100);
     expect(started.session.currentInput).toBe('');
     expect(started.lastResult).toBeUndefined();
   });
@@ -94,7 +96,7 @@ describe('KanaTrainer', () => {
     const trainer = new KanaTrainer(
       repository,
       createAudio(),
-      createClock(1_000, 61_000, 71_000, 81_000, 91_000, 101_000, 111_000, 121_000),
+      createClock(61_000, 71_000, 81_000, 91_000, 101_000, 121_000),
     );
     await trainer.load();
     const started = await trainer.start();
@@ -117,9 +119,9 @@ describe('KanaTrainer', () => {
     expect(repository.save).toHaveBeenCalledWith(completed.progress);
   });
 
-  test('time before learner starts does not affect scoring', async () => {
+  test('time before the first typed character does not affect scoring', async () => {
     const repository = createRepository(progressForLevel(hiraganaA));
-    const trainer = new KanaTrainer(repository, createAudio(), createClock(1_000, 61_000, 71_000, 81_000, 91_000, 101_000, 121_000));
+    const trainer = new KanaTrainer(repository, createAudio(), createClock(61_000, 71_000, 91_000, 101_000, 121_000));
     await trainer.load();
     const started = await trainer.start();
 
@@ -136,7 +138,7 @@ describe('KanaTrainer', () => {
 
   test('failed terminal path by max mistakes saves once and exposes a matching failed result', async () => {
     const repository = createRepository(progressForLevel(hiraganaA));
-    const trainer = new KanaTrainer(repository, createAudio(), createClock(1_000, 10_000, 11_000, 12_000, 13_000, 14_000, 15_000));
+    const trainer = new KanaTrainer(repository, createAudio(), createClock(10_000, 11_000, 12_000, 13_000));
     await trainer.load();
     const started = await trainer.start();
 
@@ -151,7 +153,7 @@ describe('KanaTrainer', () => {
       accuracy: 0,
       kanaPerMinute: 0,
       stars: 0,
-      completedAt: 14_000,
+      completedAt: 13_000,
     });
     expect(failed.progress.levelResults).toEqual([failed.lastResult]);
     expect(repository.save).toHaveBeenCalledTimes(1);
@@ -183,10 +185,46 @@ describe('KanaTrainer', () => {
 
     expect(repository.load).toHaveBeenCalledTimes(1);
     expect(restarted.status).toBe('running');
-    expect(restarted.session.startedAt).toBe(4_000);
+    expect(restarted.session.startedAt).toBeUndefined();
     expect(restarted.session.currentInput).toBe('');
     expect(restarted.session.currentPromptIndex).toBe(0);
     expect(restarted.lastResult).toBeUndefined();
+  });
+
+  test('pause and resume preserve the running session and timer start time', async () => {
+    const trainer = new KanaTrainer(createRepository(progressForLevel(hiraganaKa)), createAudio(), createClock(1_100, 1_200));
+    await trainer.load();
+    const started = await trainer.start();
+    const typed = await trainer.typeCharacter(started.session.prompts[0].romaji[0]);
+
+    const paused = trainer.pause();
+    const resumed = trainer.resume();
+
+    expect(typed.session.startedAt).toBe(1_100);
+    expect(paused.status).toBe('paused');
+    expect(paused.session.startedAt).toBe(1_100);
+    expect(paused.session.currentInput).toBe(started.session.prompts[0].romaji[0]);
+    expect(resumed.status).toBe('running');
+    expect(resumed.session.startedAt).toBe(1_100);
+    expect(resumed.session.currentInput).toBe(started.session.prompts[0].romaji[0]);
+  });
+
+  test('passing a level advances to the next unlocked level in ready state', async () => {
+    const repository = createRepository(progressForLevel(hiraganaA));
+    const trainer = new KanaTrainer(
+      repository,
+      createAudio(),
+      createClock(61_000, 71_000, 91_000, 101_000, 121_000),
+    );
+    await trainer.load();
+    const started = await trainer.start();
+    const passed = await typeAllPrompts(trainer, started);
+
+    expect(passed.status).toBe('passed');
+    expect(passed.currentLevel.id).toBe(levelId('hiragana-a-review'));
+    expect(passed.progress.activeLevelId).toBe(levelId('hiragana-a-review'));
+    expect(passed.lastResult?.levelId).toBe(hiraganaA);
+    expect(passed.session.levelId).toBe(levelId('hiragana-a-review'));
   });
 
   test('save rejection keeps the returned terminal state updated', async () => {
@@ -195,7 +233,7 @@ describe('KanaTrainer', () => {
         throw new Error('save unavailable');
       }),
     });
-    const trainer = new KanaTrainer(repository, createAudio(), createClock(1_000, 11_000, 21_000, 31_000, 41_000, 51_000, 71_000));
+    const trainer = new KanaTrainer(repository, createAudio(), createClock(11_000, 21_000, 31_000, 41_000, 71_000));
     await trainer.load();
     const started = await trainer.start();
 

@@ -1,4 +1,5 @@
 import type { AudioService } from '../../app/ports';
+import { getKanaAudioUrl } from '../kanaAudioUrl';
 
 const keyFrequencyHz = 880;
 const kanaFrequencyHz = 660;
@@ -9,6 +10,7 @@ const volume = 0.04;
 export class WebAudioService implements AudioService {
   private audioContext: AudioContext | undefined;
   private currentKanaText: string | undefined;
+  private currentAudio: HTMLAudioElement | undefined;
 
   async playKey(): Promise<void> {
     await this.beep(keyFrequencyHz, keyDurationSeconds);
@@ -16,6 +18,18 @@ export class WebAudioService implements AudioService {
 
   async playKana(kanaText: string): Promise<void> {
     this.currentKanaText = kanaText;
+
+    const audioUrl = getKanaAudioUrl(kanaText);
+
+    if (audioUrl !== undefined) {
+      try {
+        await this.playRemoteAudio(audioUrl);
+        return;
+      } catch {
+        // Fall back to the local beep when remote audio is unavailable.
+      }
+    }
+
     await this.beep(kanaFrequencyHz, kanaDurationSeconds);
   }
 
@@ -25,6 +39,50 @@ export class WebAudioService implements AudioService {
     }
 
     await this.playKana(this.currentKanaText);
+  }
+
+  private async playRemoteAudio(url: string): Promise<void> {
+    this.stopCurrentAudio();
+
+    await new Promise<void>((resolve, reject) => {
+      const audio = new Audio(url);
+      this.currentAudio = audio;
+
+      audio.addEventListener(
+        'ended',
+        () => {
+          if (this.currentAudio === audio) {
+            this.currentAudio = undefined;
+          }
+          resolve();
+        },
+        { once: true },
+      );
+      audio.addEventListener(
+        'error',
+        () => {
+          if (this.currentAudio === audio) {
+            this.currentAudio = undefined;
+          }
+          reject(new Error('remote kana audio failed'));
+        },
+        { once: true },
+      );
+
+      void audio.play().catch(reject);
+    });
+  }
+
+  private stopCurrentAudio(): void {
+    const audio = this.currentAudio;
+
+    if (audio === undefined) {
+      return;
+    }
+
+    audio.pause();
+    audio.currentTime = 0;
+    this.currentAudio = undefined;
   }
 
   private getAudioContext(): AudioContext | undefined {
