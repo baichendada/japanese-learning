@@ -60,3 +60,10 @@
 - "关卡内容" should mean **Level Set**, not generated random content.
 - "错题" should mean **Mistakes** and derived **Review Practice**, not a separate main course.
 - "速度" should mean **Speed** measured in kana per minute, not keyboard WPM.
+
+## Implementation notes
+
+- `Progress.levelResults` and `Progress.mistakeStats` are arrays in persisted schema version `1`; merge behavior lives in the progress/import-export core rather than in UI adapters.
+- `Review Practice` currently uses the branded level id `review-mistakes` and is generated from accumulated `MistakeStat` entries.
+- `Practice Session.status === "passed"` means the prompt sequence reached a terminal completion state. The app-level trainer maps the scored result to `passed` or `failed` according to the level pass accuracy.
+- The toolbar terms **Self Study**, **Confusion Pair**, **Review Practice**, **Export**, and **Import** are visible in UI, but several of those flows remain follow-up product slices rather than completed bounded contexts in the web shell.

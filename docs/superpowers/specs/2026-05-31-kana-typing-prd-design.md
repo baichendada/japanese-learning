@@ -1,5 +1,7 @@
 # 五十音打字练习 PRD / Design Spec
 
+> Implementation status (2026-06-01): Web MVP 已在 `feature/kana-typing-mvp` 分支实现，并推送到 PR #1。当前切片覆盖练习优先 UI、DDD core、本地进度、评分、导入导出合并核心、错题复习核心、浏览器适配器以及 Space/Tab 键盘流。辅助内容仍为后续切片：自学内容、易混淆练习、错题 UI、工具栏导入导出接线、完整五十音关卡目录和真实发音素材。
+
 ## 1. Product Summary
 
 做一个面向日语五十音初学者的网页练习工具。产品第一屏直接进入打字练习，参考 dazidazi.com 的沉浸式练习交互：顶部状态仪表盘、中心题目线、空格开始、Tab 重练、右上角工具入口、右侧关卡切换面板。

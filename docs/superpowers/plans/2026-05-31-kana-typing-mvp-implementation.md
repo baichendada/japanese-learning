@@ -2,6 +2,17 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+## Implementation Status
+
+As of 2026-06-01, this implementation plan has been executed on `feature/kana-typing-mvp` and attached to PR #1.
+
+Current verification target:
+
+- `npm run check`: Vitest plus production build
+- `npm run e2e`: Playwright browser flow
+
+The checklist below is preserved as the historical implementation plan. Some details were tightened during implementation and review: `src/core` remains platform-neutral, browser-only behavior lives under `src/web`, and the current MVP intentionally leaves self-study content, confusion-pair practice UI, toolbar import/export wiring, complete kana course content, and real pronunciation assets for later slices.
+
 **Goal:** Build the MVP web app for kana typing practice with a DDD-shaped reusable core, strict TDD, local progress, import/export, audio ports, and a dazidazi-inspired practice UI.
 
 **Architecture:** Use a web-first shell around a platform-neutral domain core. The `src/core` layer contains learning content, practice, progress, and review bounded contexts with no React, DOM, localStorage, file, or audio dependencies. The `src/web` layer implements browser adapters, and `src/ui` renders React components against application services.
