@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowSyntheticDefaultImports": true,
+    "outDir": "node_modules/.cache/tsconfig-node",
+    "tsBuildInfoFile": "node_modules/.cache/tsconfig-node/tsconfig.node.tsbuildinfo",
+    "types": ["node", "vitest/config"]
+  },
+  "include": ["vite.config.ts", "playwright.config.ts"]
+}
