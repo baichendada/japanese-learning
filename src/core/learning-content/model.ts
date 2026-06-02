@@ -12,7 +12,8 @@ export type KanaRowName =
   | 'ma'
   | 'ya'
   | 'ra'
-  | 'wa';
+  | 'wa'
+  | 'extended';
 
 export interface Kana {
   readonly id: KanaId;

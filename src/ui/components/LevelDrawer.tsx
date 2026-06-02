@@ -2,6 +2,7 @@ import { Lock } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { Course, Level } from '../../core/learning-content/levelCatalog';
 import { courses, getCourse } from '../../core/learning-content/levelCatalog';
+import { getLevelPreviewItems } from '../../core/learning-content/levelPreview';
 import type { CourseId, LevelId } from '../../core/shared/ids';
 import type { ProgressState } from '../../core/progress/model';
 import { isLevelUnlocked } from '../../core/progress/progress';
@@ -97,6 +98,7 @@ function LevelDrawerItem({
   const unlocked = isLevelUnlocked(progress, level.unlock);
   const result = progress.levelResults.find((candidate) => candidate.levelId === level.id);
   const levelNumber = `${index + 1}/${course.levels.length}`;
+  const previewItems = getLevelPreviewItems(level);
 
   return (
     <li className={`level-drawer__item${current ? ' level-drawer__item--current' : ''}${!unlocked ? ' level-drawer__item--locked' : ''}`}>
@@ -115,11 +117,21 @@ function LevelDrawerItem({
         </div>
 
         <div className="level-drawer__preview" aria-hidden="true">
-          {level.kanaTexts.map((kana) => (
-            <span key={kana} className="level-drawer__preview-char">
-              {kana}
-            </span>
-          ))}
+          {previewItems.map((item, previewIndex) => {
+            if (item.type === 'word') {
+              return (
+                <span key={`${item.label}-${previewIndex}`} className="level-drawer__preview-word">
+                  {item.label}
+                </span>
+              );
+            }
+
+            return (
+              <span key={`${item.text}-${previewIndex}`} className="level-drawer__preview-char">
+                {item.text}
+              </span>
+            );
+          })}
         </div>
 
         <div className="level-drawer__item-foot">

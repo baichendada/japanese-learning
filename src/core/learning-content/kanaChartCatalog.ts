@@ -139,6 +139,7 @@ export function getYouonChartRows(script: KanaScript): readonly KanaChartRowDefi
 }
 
 export interface KanaChartRowDefinition {
+  readonly idPrefix: string;
   readonly label: string;
   readonly cells: readonly KanaChartItem[];
 }
@@ -161,6 +162,7 @@ function buildChartExtendedKana(): KanaChartItem[] {
 
 function buildRowDefinition(script: KanaScript, row: RowTemplate): KanaChartRowDefinition {
   return {
+    idPrefix: row.idPrefix,
     label: `${toDisplaySeed(script, row.labelSeedHiragana)}行`,
     cells: Object.freeze(buildRowItems(script, row)),
   };

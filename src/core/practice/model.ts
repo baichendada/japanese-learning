@@ -5,6 +5,7 @@ export type PracticeStatus = 'ready' | 'running' | 'passed' | 'failed';
 export interface PracticePrompt {
   readonly kanaText: string;
   readonly romaji: string;
+  readonly wordIndex?: number;
 }
 
 export interface Mistake {

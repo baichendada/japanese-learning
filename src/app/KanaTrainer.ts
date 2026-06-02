@@ -1,14 +1,15 @@
 import type { AudioService, ProgressRepository } from './ports';
-import { findKanaByText } from '../core/learning-content/kanaCatalog';
+import { buildLevelPrompts } from '../core/learning-content/promptBuilder';
 import { getLevelById } from '../core/learning-content/levelCatalog';
 import type { Level } from '../core/learning-content/levelCatalog';
 import { createPracticeSession } from '../core/practice/practiceSession';
 import type { PracticeSession } from '../core/practice/practiceSession';
-import type { PracticePrompt, PracticeStatus } from '../core/practice/model';
+import type { PracticeStatus } from '../core/practice/model';
 import { scorePracticeSession } from '../core/practice/scoring';
 import { mergeProgress, parseProgressBackup } from '../core/progress/importExport';
 import type { LevelResult, ProgressSettings, ProgressState } from '../core/progress/model';
-import { getNextPlayableLevel, isLevelUnlocked, recordLevelResult } from '../core/progress/progress';
+import { getNextPlayableLevel, isLevelUnlocked, recordLevelResult, recordMistake } from '../core/progress/progress';
+import { createConfusionPractice } from '../core/review/confusionPractice';
 import { createReviewPractice } from '../core/review/reviewPractice';
 import type { Clock } from '../core/shared/clock';
 import type { LevelId } from '../core/shared/ids';
@@ -190,6 +191,23 @@ export class KanaTrainer {
     });
   }
 
+  async startConfusionPractice(): Promise<KanaTrainerState> {
+    const current = this.requireLoaded();
+    const practice = createConfusionPractice();
+    const session = createPracticeSession({
+      levelId: practice.levelId,
+      prompts: practice.prompts,
+      maxMistakes: 4,
+    });
+
+    return this.storeState({
+      ...current,
+      session,
+      status: 'running',
+      lastResult: undefined,
+    });
+  }
+
   async typeCharacter(character: string): Promise<KanaTrainerState> {
     const current = this.requireStarted();
 
@@ -200,6 +218,16 @@ export class KanaTrainer {
     playKeyFailSoft(this.audioService);
 
     const nextSession = current.session.typeCharacter(character, this.clock.now());
+    let progress = current.progress;
+
+    if (nextSession.mistakes.length > current.session.mistakes.length) {
+      const latestMistake = nextSession.mistakes[nextSession.mistakes.length - 1];
+      progress = recordMistake(progress, {
+        kanaText: latestMistake.kanaText,
+        expectedRomaji: latestMistake.expectedRomaji,
+        occurredAt: latestMistake.occurredAt,
+      });
+    }
 
     if (isTerminalTransition(current.session.status, nextSession.status) && nextSession.endedAt !== undefined) {
       const startedAt = nextSession.startedAt ?? nextSession.endedAt;
@@ -219,7 +247,7 @@ export class KanaTrainer {
         stars: score.stars,
         completedAt: nextSession.endedAt,
       };
-      let progress = recordLevelResult(current.progress, result);
+      progress = recordLevelResult(progress, result);
       let nextLevel = current.currentLevel;
       let sessionForNext = nextSession;
 
@@ -259,7 +287,7 @@ export class KanaTrainer {
       return nextState;
     }
 
-    return this.storeState({ ...current, session: nextSession, status: 'running' });
+    return this.storeState({ ...current, progress, session: nextSession, status: 'running' });
   }
 
   backspace(): KanaTrainerState {
@@ -285,7 +313,7 @@ export class KanaTrainer {
   private createSession(level: Level): PracticeSession {
     return createPracticeSession({
       levelId: level.id,
-      prompts: createPrompts(level),
+      prompts: buildLevelPrompts(level),
       maxMistakes: level.maxMistakes,
     });
   }
@@ -317,18 +345,6 @@ function requireActiveLevel(id: string): Level {
   }
 
   return level;
-}
-
-function createPrompts(level: Level): readonly PracticePrompt[] {
-  return level.kanaTexts.map((kanaText) => {
-    const kana = findKanaByText(kanaText);
-
-    if (kana === undefined) {
-      throw new Error(`Unknown kana in level ${level.id}: ${kanaText}`);
-    }
-
-    return { kanaText, romaji: kana.romaji };
-  });
 }
 
 function playKeyFailSoft(audioService: AudioService): void {
