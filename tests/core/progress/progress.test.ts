@@ -3,7 +3,7 @@ import { getLevelById } from '../../../src/core/learning-content/levelCatalog';
 import type { UnlockRule } from '../../../src/core/learning-content/levelCatalog';
 import { courseId, levelId } from '../../../src/core/shared/ids';
 import type { LevelResult, ProgressState } from '../../../src/core/progress/model';
-import { createEmptyProgress, isLevelUnlocked, recordLevelResult } from '../../../src/core/progress/progress';
+import { createEmptyProgress, getNextPlayableLevel, isLevelUnlocked, recordLevelResult } from '../../../src/core/progress/progress';
 
 describe('progress aggregate', () => {
   const hiraganaBasic = courseId('hiragana-basic');
@@ -48,6 +48,17 @@ describe('progress aggregate', () => {
     const progress = recordLevelResult(createEmptyProgress(), result());
 
     expect(isLevelUnlocked(progress, nextLevelRule)).toBe(true);
+  });
+
+  test('returns the next unlocked level in course order', () => {
+    const afterA = recordLevelResult(createEmptyProgress(), result());
+
+    expect(getNextPlayableLevel(afterA, hiraganaA)?.id).toBe(hiraganaAReview);
+
+    const afterReview = recordLevelResult(afterA, result({ levelId: hiraganaAReview }));
+
+    expect(getNextPlayableLevel(afterReview, hiraganaAReview)?.id).toBe(levelId('hiragana-ka'));
+    expect(getNextPlayableLevel(afterReview, levelId('hiragana-ka'))).toBeUndefined();
   });
 
   test('always rules unlock and previous-level rules stay locked for missing or failed results', () => {

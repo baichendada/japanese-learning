@@ -74,7 +74,67 @@ describe('WebAudioService', () => {
     await expect(service.playKana('あ')).resolves.toBeUndefined();
     await expect(service.replayCurrent()).resolves.toBeUndefined();
   });
+
+  test('playKana prefers remote pronunciation audio when HTMLAudioElement succeeds', async () => {
+    const play = vi.fn().mockResolvedValue(undefined);
+    const audioInstances: MockAudio[] = [];
+
+    class MockAudio {
+      currentTime = 0;
+      play = play;
+      pause = vi.fn();
+      addEventListener = vi.fn((eventName: string, listener: EventListener) => {
+        if (eventName === 'ended') {
+          queueMicrotask(() => listener(new Event('ended')));
+        }
+      });
+
+      constructor(_url: string) {
+        audioInstances.push(this);
+      }
+    }
+
+    vi.stubGlobal('Audio', MockAudio);
+    setWindowProperty('AudioContext', undefined);
+    setWindowProperty('webkitAudioContext', undefined);
+
+    const service = new WebAudioService();
+
+    await expect(service.playKana('が')).resolves.toBeUndefined();
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(audioInstances[0]).toBeDefined();
+  });
+
+  test('playKana falls back to beep when remote pronunciation audio fails', async () => {
+    class FailingAudio {
+      currentTime = 0;
+      pause = vi.fn();
+      addEventListener = vi.fn((eventName: string, listener: EventListener) => {
+        if (eventName === 'error') {
+          queueMicrotask(() => listener(new Event('error')));
+        }
+      });
+      play = vi.fn().mockRejectedValue(new Error('blocked'));
+    }
+
+    vi.stubGlobal('Audio', FailingAudio);
+    const context = audioContext();
+    setWindowProperty('AudioContext', audioContextConstructor(context));
+    setWindowProperty('webkitAudioContext', undefined);
+
+    const service = new WebAudioService();
+
+    await expect(service.playKana('あ')).resolves.toBeUndefined();
+    expect(context.createOscillator).toHaveBeenCalled();
+  });
 });
+
+interface MockAudio {
+  currentTime: number;
+  play: ReturnType<typeof vi.fn>;
+  pause: ReturnType<typeof vi.fn>;
+  addEventListener: ReturnType<typeof vi.fn>;
+}
 
 function setWindowProperty(name: 'AudioContext' | 'webkitAudioContext', value: unknown): void {
   Object.defineProperty(window, name, {

@@ -2,24 +2,39 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { KanaTrainer } from '../app/KanaTrainer';
 import type { KanaTrainerState } from '../app/KanaTrainer';
+import type { ProgressSettings } from '../core/progress/model';
 import { BrowserClock } from '../web/adapters/BrowserClock';
+import { BrowserFilePort } from '../web/adapters/BrowserFilePort';
 import { LocalStorageProgressRepository } from '../web/adapters/LocalStorageProgressRepository';
 import { WebAudioService } from '../web/adapters/WebAudioService';
+import { ConfusionPanel } from './components/ConfusionPanel';
 import { Dashboard } from './components/Dashboard';
+import { KanaChartPanel } from './components/KanaChartPanel';
 import { KanaHelper } from './components/KanaHelper';
 import { KanaLine } from './components/KanaLine';
 import { LevelDrawer } from './components/LevelDrawer';
+import { LevelInfoBar } from './components/LevelInfoBar';
+import { MistakePanel } from './components/MistakePanel';
 import { ResultDialog } from './components/ResultDialog';
-import { TopToolbar } from './components/TopToolbar';
+import { SettingsPanel } from './components/SettingsPanel';
+import { TopToolbar, type ToolbarAction } from './components/TopToolbar';
 
 export function App() {
+  const audioService = useMemo(() => new WebAudioService(), []);
   const trainer = useMemo(
-    () => new KanaTrainer(new LocalStorageProgressRepository(), new WebAudioService(), new BrowserClock()),
-    [],
+    () => new KanaTrainer(new LocalStorageProgressRepository(), audioService, new BrowserClock()),
+    [audioService],
   );
+  const filePort = useMemo(() => new BrowserFilePort(), []);
   const [state, setState] = useState<KanaTrainerState>();
   const [loadError, setLoadError] = useState<string>();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [confusionOpen, setConfusionOpen] = useState(false);
+  const [kanaChartOpen, setKanaChartOpen] = useState(false);
+  const [mistakeOpen, setMistakeOpen] = useState(false);
+  const [toolbarMessage, setToolbarMessage] = useState<string>();
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [visibleInput, setVisibleInput] = useState('');
   const stateRef = useRef<KanaTrainerState | undefined>(undefined);
 
@@ -49,6 +64,16 @@ export function App() {
     };
   }, [trainer]);
 
+  useEffect(() => {
+    if (toolbarMessage === undefined) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setToolbarMessage(undefined), 3200);
+
+    return () => window.clearTimeout(timer);
+  }, [toolbarMessage]);
+
   const applyState = useCallback((nextState: KanaTrainerState) => {
     stateRef.current = nextState;
     setState(nextState);
@@ -61,7 +86,13 @@ export function App() {
       return;
     }
 
-    const nextState = current.status === 'ready' ? await trainer.start() : await trainer.restart();
+    if (current.status === 'paused') {
+      applyState(trainer.resume());
+      return;
+    }
+
+    const nextState =
+      current.status === 'ready' || current.status === 'passed' ? await trainer.start() : await trainer.restart();
     setVisibleInput('');
     applyState(nextState);
   }, [applyState, trainer]);
@@ -94,6 +125,146 @@ export function App() {
     [applyState, trainer],
   );
 
+  const backspaceInput = useCallback(() => {
+    const current = stateRef.current;
+
+    if (current === undefined || current.status !== 'running') {
+      return;
+    }
+
+    const nextState = trainer.backspace();
+    setVisibleInput(nextState.session.currentInput);
+    applyState(nextState);
+  }, [applyState, trainer]);
+
+  const pauseIfRunning = useCallback(() => {
+    const current = stateRef.current;
+
+    if (current?.status !== 'running') {
+      return;
+    }
+
+    applyState(trainer.pause());
+  }, [applyState, trainer]);
+
+  const handleSelectLevel = useCallback(
+    async (levelId: Parameters<typeof trainer.changeLevel>[0]) => {
+      try {
+        const nextState = await trainer.changeLevel(levelId);
+        setVisibleInput('');
+        applyState(nextState);
+      } catch (error: unknown) {
+        setToolbarMessage(error instanceof Error ? error.message : '无法切换关卡');
+      }
+    },
+    [applyState, trainer],
+  );
+
+  const handleSettingsChange = useCallback(
+    async (settings: ProgressSettings) => {
+      const nextState = await trainer.updateSettings(settings);
+      applyState(nextState);
+    },
+    [applyState, trainer],
+  );
+
+  const handleExportProgress = useCallback(async () => {
+    const current = stateRef.current;
+
+    if (current === undefined) {
+      return;
+    }
+
+    try {
+      await filePort.exportJson(current.progress, 'kana50-progress.json');
+      setToolbarMessage('进度已导出');
+    } catch (error: unknown) {
+      setToolbarMessage(error instanceof Error ? error.message : '导出失败');
+    }
+  }, [filePort]);
+
+  const handleImportProgress = useCallback(async () => {
+    try {
+      const imported = await filePort.importJson();
+      const nextState = await trainer.importProgress(JSON.stringify(imported));
+      setVisibleInput('');
+      applyState(nextState);
+      setToolbarMessage('进度已导入');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : '导入失败';
+
+      if (message !== 'No file selected') {
+        setToolbarMessage(message);
+      }
+    }
+  }, [applyState, filePort, trainer]);
+
+  const handleStartMistakeReview = useCallback(async () => {
+    try {
+      const nextState = await trainer.startMistakeReview();
+      setVisibleInput('');
+      applyState(nextState);
+      setMistakeOpen(false);
+    } catch (error: unknown) {
+      setToolbarMessage(error instanceof Error ? error.message : '无法开始错题复习');
+    }
+  }, [applyState, trainer]);
+
+  const handleToolbarAction = useCallback(
+    (action: ToolbarAction) => {
+      switch (action) {
+        case 'kanaChart':
+          setKanaChartOpen(true);
+          return;
+        case 'confusion':
+          setConfusionOpen(true);
+          return;
+        case 'mistakes':
+          setMistakeOpen(true);
+          return;
+        case 'export':
+          void handleExportProgress();
+          return;
+        case 'import':
+          void handleImportProgress();
+          return;
+        case 'settings':
+          setSettingsOpen(true);
+          return;
+        case 'fullscreen':
+          if (document.fullscreenElement !== null) {
+            void document.exitFullscreen?.().catch(() => {
+              setToolbarMessage('无法退出全屏');
+            });
+            return;
+          }
+
+          void document.documentElement.requestFullscreen?.().catch(() => {
+            setToolbarMessage('当前浏览器不支持全屏');
+          });
+          return;
+      }
+    },
+    [handleExportProgress, handleImportProgress],
+  );
+
+  const handlePlayKana = useCallback(
+    (kanaText: string) => {
+      void audioService.playKana(kanaText);
+    },
+    [audioService],
+  );
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement !== null);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isInteractiveTarget(event.target)) {
@@ -115,6 +286,12 @@ export function App() {
         return;
       }
 
+      if (event.key === 'Backspace') {
+        event.preventDefault();
+        backspaceInput();
+        return;
+      }
+
       if (event.key.length === 1 && /^[a-z]$/i.test(event.key)) {
         event.preventDefault();
         void typeCharacter(event.key);
@@ -124,7 +301,24 @@ export function App() {
     window.addEventListener('keydown', handleKeyDown);
 
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [restartPractice, startPractice, typeCharacter]);
+  }, [backspaceInput, restartPractice, startPractice, typeCharacter]);
+
+  useEffect(() => {
+    const handleBlur = () => pauseIfRunning();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        pauseIfRunning();
+      }
+    };
+
+    window.addEventListener('blur', handleBlur);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [pauseIfRunning]);
 
   if (loadError !== undefined) {
     return (
@@ -145,15 +339,37 @@ export function App() {
   }
 
   return (
-    <main className="practice-page">
-      <div className="practice-page__top">
-        <Dashboard state={state} onOpenLevels={() => setDrawerOpen(true)} />
-        <TopToolbar />
-      </div>
+    <main className={`practice-page${isFullscreen ? ' practice-page--fullscreen' : ''}`}>
+      {!isFullscreen ? (
+        <div className="practice-page__header">
+          <Dashboard state={state} />
+          <TopToolbar isFullscreen={isFullscreen} onAction={handleToolbarAction} />
+        </div>
+      ) : null}
 
-      <section className="practice-stage" aria-label="打字练习" onClick={handleStageClick(startPractice)}>
-        <KanaLine state={state} visibleInput={visibleInput} onStart={startPractice} />
-        <KanaHelper state={state} />
+      {isFullscreen ? (
+        <button
+          type="button"
+          className="fullscreen-exit"
+          aria-label="退出全屏"
+          onClick={() => void document.exitFullscreen?.()}
+        >
+          退出全屏
+        </button>
+      ) : null}
+
+      {toolbarMessage !== undefined ? (
+        <p className="practice-page__toast" role="status">
+          {toolbarMessage}
+        </p>
+      ) : null}
+
+      <section className="type-area-main" aria-label="打字练习" onClick={handleStageClick(startPractice)}>
+        <div className="type-area">
+          <KanaLine state={state} visibleInput={visibleInput} onStart={startPractice} />
+        </div>
+        <LevelInfoBar state={state} onOpenLevels={() => setDrawerOpen(true)} />
+        {state.progress.settings.helperVisible ? <KanaHelper state={state} /> : null}
       </section>
 
       <LevelDrawer
@@ -161,8 +377,27 @@ export function App() {
         open={drawerOpen}
         progress={state.progress}
         onClose={() => setDrawerOpen(false)}
+        onSelectLevel={(levelId) => void handleSelectLevel(levelId)}
       />
-      <ResultDialog state={state} onRestart={startPractice} />
+      <SettingsPanel
+        open={settingsOpen}
+        settings={state.progress.settings}
+        onClose={() => setSettingsOpen(false)}
+        onChange={(settings) => void handleSettingsChange(settings)}
+      />
+      <ConfusionPanel open={confusionOpen} onClose={() => setConfusionOpen(false)} />
+      <KanaChartPanel
+        open={kanaChartOpen}
+        onClose={() => setKanaChartOpen(false)}
+        onPlayKana={handlePlayKana}
+      />
+      <MistakePanel
+        open={mistakeOpen}
+        mistakes={state.progress.mistakeStats}
+        onClose={() => setMistakeOpen(false)}
+        onStartReview={() => void handleStartMistakeReview()}
+      />
+      <ResultDialog state={state} onRestart={startPractice} onNextLevel={startPractice} />
     </main>
   );
 }

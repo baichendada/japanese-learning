@@ -2,53 +2,49 @@ import type { KanaTrainerState, KanaTrainerStatus } from '../../app/KanaTrainer'
 
 interface DashboardProps {
   readonly state: KanaTrainerState;
-  readonly onOpenLevels: () => void;
 }
 
 const statusLabels: Record<KanaTrainerStatus, string> = {
   ready: '预备',
-  running: '练习中',
+  running: '挑战中',
+  paused: '已暂停',
   passed: '通关成功',
   failed: '本关未通过',
 };
 
-export function Dashboard({ state, onOpenLevels }: DashboardProps) {
+export function Dashboard({ state }: DashboardProps) {
   const totalPrompts = state.session.prompts.length;
 
   return (
-    <header className="dashboard" aria-label="练习状态">
-      <div className="dashboard__brand">
+    <header className="practice-header" aria-label="练习状态">
+      <div className="practice-header__brand">
         <h1>kana50.com</h1>
-        <p>五十音打字练习</p>
       </div>
 
-      <dl className="dashboard__stats">
-        <div className="dashboard__stat">
-          <dt>状态</dt>
-          <dd>{statusLabels[state.status]}</dd>
-        </div>
-        <div className="dashboard__stat dashboard__stat--level">
-          <dt>当前关卡</dt>
-          <dd>
-            <span>{state.currentLevel.name}</span>
-            <button type="button" className="level-switch" aria-label="切换关卡" title="切换关卡" onClick={onOpenLevels}>
-              切换
-            </button>
-          </dd>
-        </div>
-        <div className="dashboard__stat">
-          <dt>进度</dt>
-          <dd>
+      <p className="practice-header__stats" aria-label="练习数据">
+        <span className="practice-header__metric">
+          <span className="practice-header__metric-label">状态</span>
+          <span className="practice-header__metric-value">{statusLabels[state.status]}</span>
+        </span>
+        <span className="practice-header__divider" aria-hidden="true">
+          ·
+        </span>
+        <span className="practice-header__metric">
+          <span className="practice-header__metric-label">进度</span>
+          <span className="practice-header__metric-value">
             {state.session.completedPrompts}/{totalPrompts}
-          </dd>
-        </div>
-        <div className="dashboard__stat">
-          <dt>错误</dt>
-          <dd>
+          </span>
+        </span>
+        <span className="practice-header__divider" aria-hidden="true">
+          ·
+        </span>
+        <span className="practice-header__metric">
+          <span className="practice-header__metric-label">错误</span>
+          <span className="practice-header__metric-value">
             {state.session.mistakes.length}/{state.session.maxMistakes}
-          </dd>
-        </div>
-      </dl>
+          </span>
+        </span>
+      </p>
     </header>
   );
 }

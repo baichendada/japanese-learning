@@ -25,7 +25,11 @@ describe('kana catalog', () => {
     expect(getKanaRow('hiragana', 'ka').map((kana) => kana.text)).toEqual(['か', 'き', 'く', 'け', 'こ']);
     expect(getKanaRow('hiragana', 'sa').map((kana) => kana.text)).toEqual(['さ', 'し', 'す', 'せ', 'そ']);
     expect(getKanaRow('hiragana', 'ta').map((kana) => kana.text)).toEqual(['た', 'ち', 'つ', 'て', 'と']);
+    expect(getKanaRow('hiragana', 'na').map((kana) => kana.text)).toEqual(['な', 'に', 'ぬ', 'ね', 'の']);
+    expect(getKanaRow('hiragana', 'ha').map((kana) => kana.text)).toEqual(['は', 'ひ', 'ふ', 'へ', 'ほ']);
+    expect(getKanaRow('hiragana', 'wa').map((kana) => kana.text)).toEqual(['わ', 'を', 'ん']);
     expect(getKanaRow('katakana', 'a').map((kana) => kana.text)).toEqual(['ア', 'イ', 'ウ', 'エ', 'オ']);
+    expect(getKanaRow('katakana', 'ka').map((kana) => kana.text)).toEqual(['カ', 'キ', 'ク', 'ケ', 'コ']);
   });
 
   test('protects shared catalog content from runtime mutation', () => {

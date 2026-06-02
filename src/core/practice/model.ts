@@ -21,7 +21,7 @@ export interface PracticeSessionState {
   readonly currentInput: string;
   readonly mistakes: readonly Mistake[];
   readonly maxMistakes: number;
-  readonly startedAt: number;
+  readonly startedAt?: number;
   readonly endedAt?: number;
   readonly status: PracticeStatus;
   readonly completedPrompts: number;

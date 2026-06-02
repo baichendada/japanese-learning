@@ -1,5 +1,6 @@
-import { getLevelById } from '../learning-content/levelCatalog';
-import type { UnlockRule } from '../learning-content/levelCatalog';
+import { getCourse, getLevelById } from '../learning-content/levelCatalog';
+import type { Level, UnlockRule } from '../learning-content/levelCatalog';
+import type { LevelId } from '../shared/ids';
 import { courseId, levelId } from '../shared/ids';
 import type { LevelResult, MistakeStat, ProgressSettings, ProgressState } from './model';
 
@@ -45,6 +46,25 @@ export function isLevelUnlocked(progress: ProgressState, rule: UnlockRule): bool
   }
 
   return progress.levelResults.some((result) => result.levelId === rule.previousLevelId && result.passed === true);
+}
+
+export function getNextPlayableLevel(progress: ProgressState, currentLevelId: LevelId): Level | undefined {
+  const course = getCourse(progress.activeCourseId);
+  const currentIndex = course.levels.findIndex((level) => level.id === currentLevelId);
+
+  if (currentIndex === -1) {
+    return undefined;
+  }
+
+  for (let index = currentIndex + 1; index < course.levels.length; index += 1) {
+    const level = course.levels[index];
+
+    if (isLevelUnlocked(progress, level.unlock)) {
+      return level;
+    }
+  }
+
+  return undefined;
 }
 
 function isBetterLevelResult(candidate: LevelResult, current: LevelResult): boolean {
