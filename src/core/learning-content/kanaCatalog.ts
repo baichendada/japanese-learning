@@ -1,4 +1,5 @@
 import { kanaId } from '../shared/ids';
+import { getChartExtendedKana } from './kanaChartCatalog';
 import type { Kana, KanaRowName, KanaScript } from './model';
 
 function defineKana(
@@ -106,7 +107,18 @@ const shippedKana: readonly Kana[] = [
   defineKana('katakana-n', 'katakana', 'wa', 'ン', 'n'),
 ];
 
-export const kanaCatalog: readonly Kana[] = Object.freeze(shippedKana.map((kana) => Object.freeze(kana)));
+const extendedKana: readonly Kana[] = getChartExtendedKana('hiragana')
+  .concat(getChartExtendedKana('katakana'))
+  .map((item) =>
+    defineKana(item.id, item.script, 'extended', item.text, item.romaji),
+  )
+  .concat([
+    defineKana('katakana-chouon', 'katakana', 'extended', 'ー', '-'),
+  ]);
+
+export const kanaCatalog: readonly Kana[] = Object.freeze(
+  [...shippedKana, ...extendedKana].map((kana) => Object.freeze(kana)),
+);
 
 export function findKanaByText(text: string): Kana | undefined {
   return kanaCatalog.find((kana) => kana.text === text);
@@ -114,4 +126,8 @@ export function findKanaByText(text: string): Kana | undefined {
 
 export function getKanaRow(script: KanaScript, row: KanaRowName): readonly Kana[] {
   return Object.freeze(kanaCatalog.filter((kana) => kana.script === script && kana.row === row));
+}
+
+export function getAllKanaTexts(script: KanaScript): readonly string[] {
+  return Object.freeze(kanaCatalog.filter((kana) => kana.script === script).map((kana) => kana.text));
 }

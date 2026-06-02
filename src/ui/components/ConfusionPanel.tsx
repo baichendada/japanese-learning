@@ -1,24 +1,12 @@
-interface ConfusionPair {
-  readonly left: string;
-  readonly right: string;
-  readonly note: string;
-}
-
-const confusionPairs: readonly ConfusionPair[] = [
-  { left: 'し', right: 'ち', note: '竖笔与横折位置不同' },
-  { left: 'さ', right: 'き', note: '注意左偏旁写法' },
-  { left: 'ぬ', right: 'め', note: '右下圈与点位置' },
-  { left: 'は', right: 'ほ', note: '右侧笔画数量' },
-  { left: 'ア', right: 'マ', note: '片假名横竖比例' },
-  { left: 'ソ', right: 'ン', note: '撇的方向与位置' },
-];
+import { confusionPairs } from '../../core/review/confusionPractice';
 
 interface ConfusionPanelProps {
   readonly open: boolean;
   readonly onClose: () => void;
+  readonly onStartPractice: () => void;
 }
 
-export function ConfusionPanel({ open, onClose }: ConfusionPanelProps) {
+export function ConfusionPanel({ open, onClose, onStartPractice }: ConfusionPanelProps) {
   if (!open) {
     return null;
   }
@@ -46,6 +34,9 @@ export function ConfusionPanel({ open, onClose }: ConfusionPanelProps) {
             </li>
           ))}
         </ul>
+        <button type="button" className="primary-button" onClick={onStartPractice}>
+          开始易混淆练习
+        </button>
       </div>
     </aside>
   );

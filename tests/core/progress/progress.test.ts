@@ -3,7 +3,8 @@ import { getLevelById } from '../../../src/core/learning-content/levelCatalog';
 import type { UnlockRule } from '../../../src/core/learning-content/levelCatalog';
 import { courseId, levelId } from '../../../src/core/shared/ids';
 import type { LevelResult, ProgressState } from '../../../src/core/progress/model';
-import { createEmptyProgress, getNextPlayableLevel, isLevelUnlocked, recordLevelResult } from '../../../src/core/progress/progress';
+import { createEmptyProgress, getNextPlayableLevel, isCourseCompleted, isLevelUnlocked, recordLevelResult, recordMistake } from '../../../src/core/progress/progress';
+import { getCourse } from '../../../src/core/learning-content/levelCatalog';
 
 describe('progress aggregate', () => {
   const hiraganaBasic = courseId('hiragana-basic');
@@ -40,6 +41,30 @@ describe('progress aggregate', () => {
     });
   });
 
+  test('recordMistake increments existing stats and appends new ones', () => {
+    const first = recordMistake(createEmptyProgress(), {
+      kanaText: 'し',
+      expectedRomaji: 'shi',
+      occurredAt: 1_000,
+    });
+    const second = recordMistake(first, {
+      kanaText: 'し',
+      expectedRomaji: 'shi',
+      occurredAt: 2_000,
+    });
+    const third = recordMistake(second, {
+      kanaText: 'つ',
+      expectedRomaji: 'tsu',
+      occurredAt: 3_000,
+    });
+
+    expect(first.mistakeStats).toEqual([
+      { kanaText: 'し', expectedRomaji: 'shi', count: 1, lastMistakeAt: 1_000 },
+    ]);
+    expect(second.mistakeStats[0]).toMatchObject({ count: 2, lastMistakeAt: 2_000 });
+    expect(third.mistakeStats).toHaveLength(2);
+  });
+
   test('unlocks a next level only after the previous level has a passed result', () => {
     const nextLevelRule: UnlockRule = {
       type: 'previous-level-passed',
@@ -59,6 +84,45 @@ describe('progress aggregate', () => {
 
     expect(getNextPlayableLevel(afterReview, hiraganaAReview)?.id).toBe(levelId('hiragana-ka'));
     expect(getNextPlayableLevel(afterReview, levelId('hiragana-ka'))).toBeUndefined();
+  });
+
+  test('unlocks advanced courses only after the prerequisite course is fully passed', () => {
+    expect(
+      isLevelUnlocked(createEmptyProgress(), {
+        type: 'course-completed',
+        courseId: hiraganaBasic,
+      }),
+    ).toBe(false);
+
+    let progress = createEmptyProgress();
+
+    for (const level of getCourse(hiraganaBasic).levels) {
+      progress = recordLevelResult(progress, result({ levelId: level.id, courseId: hiraganaBasic }));
+    }
+
+    expect(isCourseCompleted(progress, hiraganaBasic)).toBe(true);
+    expect(
+      isLevelUnlocked(progress, {
+        type: 'course-completed',
+        courseId: hiraganaBasic,
+      }),
+    ).toBe(true);
+  });
+
+  test('advances to the next course after the final basic review level', () => {
+    let progress = createEmptyProgress();
+
+    for (const level of getCourse(hiraganaBasic).levels) {
+      progress = recordLevelResult(progress, result({ levelId: level.id, courseId: hiraganaBasic }));
+    }
+
+    const lastBasicLevel = getCourse(hiraganaBasic).levels.at(-1);
+
+    if (lastBasicLevel === undefined) {
+      throw new Error('Expected hiragana basic course to have levels');
+    }
+
+    expect(getNextPlayableLevel(progress, lastBasicLevel.id)?.id).toBe(levelId('hiragana-ga'));
   });
 
   test('always rules unlock and previous-level rules stay locked for missing or failed results', () => {

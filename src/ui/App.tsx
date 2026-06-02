@@ -210,6 +210,17 @@ export function App() {
     }
   }, [applyState, trainer]);
 
+  const handleStartConfusionPractice = useCallback(async () => {
+    try {
+      const nextState = await trainer.startConfusionPractice();
+      setVisibleInput('');
+      applyState(nextState);
+      setConfusionOpen(false);
+    } catch (error: unknown) {
+      setToolbarMessage(error instanceof Error ? error.message : '无法开始易混淆练习');
+    }
+  }, [applyState, trainer]);
+
   const handleToolbarAction = useCallback(
     (action: ToolbarAction) => {
       switch (action) {
@@ -385,7 +396,13 @@ export function App() {
         onClose={() => setSettingsOpen(false)}
         onChange={(settings) => void handleSettingsChange(settings)}
       />
-      <ConfusionPanel open={confusionOpen} onClose={() => setConfusionOpen(false)} />
+      <ConfusionPanel
+        open={confusionOpen}
+        onClose={() => setConfusionOpen(false)}
+        onStartPractice={() => {
+          void handleStartConfusionPractice();
+        }}
+      />
       <KanaChartPanel
         open={kanaChartOpen}
         onClose={() => setKanaChartOpen(false)}

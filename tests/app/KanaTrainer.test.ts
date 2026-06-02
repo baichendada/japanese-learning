@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { KanaTrainer } from '../../src/app/KanaTrainer';
 import type { AudioService, ProgressRepository } from '../../src/app/ports';
-import { findKanaByText } from '../../src/core/learning-content/kanaCatalog';
+import { buildLevelPrompts } from '../../src/core/learning-content/promptBuilder';
 import { getLevelById } from '../../src/core/learning-content/levelCatalog';
 import type { Level } from '../../src/core/learning-content/levelCatalog';
 import type { ProgressState } from '../../src/core/progress/model';
@@ -72,6 +72,24 @@ describe('KanaTrainer', () => {
     expect(audio.playKey).toHaveBeenCalledTimes(1);
     expect(state.status).toBe('running');
     expect(state.session.currentInput).toBe(character);
+  });
+
+  test('records mistake stats when the learner types an incorrect character', async () => {
+    const repository = createRepository(progressForLevel(hiraganaKa));
+    const trainer = new KanaTrainer(repository, createAudio(), createClock(1_000));
+    await trainer.load();
+    await trainer.start();
+
+    const state = await trainer.typeCharacter('z');
+
+    expect(state.progress.mistakeStats).toEqual([
+      {
+        kanaText: state.session.prompts[0].kanaText,
+        expectedRomaji: state.session.prompts[0].romaji,
+        count: 1,
+        lastMistakeAt: 1_000,
+      },
+    ]);
   });
 
   test('audio rejection does not block typing', async () => {
@@ -325,15 +343,7 @@ function requireLevel(id: LevelId): Level {
 }
 
 function promptsForLevel(level: Level) {
-  return level.kanaTexts.map((kanaText) => {
-    const kana = findKanaByText(kanaText);
-
-    if (kana === undefined) {
-      throw new Error(`Expected kana ${kanaText} to exist`);
-    }
-
-    return { kanaText, romaji: kana.romaji };
-  });
+  return buildLevelPrompts(level);
 }
 
 async function typeAllPrompts(trainer: KanaTrainer, initialState: Awaited<ReturnType<KanaTrainer['start']>>) {

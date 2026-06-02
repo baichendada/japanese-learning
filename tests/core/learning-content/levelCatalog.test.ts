@@ -24,10 +24,20 @@ describe('level catalog', () => {
     expect(course.levels[0]).toMatchObject({
       name: 'あ行',
       kanaTexts: ['あ', 'い', 'う', 'え', 'お'],
+      promptOrder: 'sequential',
     });
     expect(course.levels[1]).toMatchObject({
       name: 'あ行复习',
       kanaTexts: ['あ', 'い', 'う', 'え', 'お'],
+      promptOrder: 'shuffled',
+    });
+  });
+
+  test('builds cumulative shuffled review levels after the first row', () => {
+    expect(getLevelById('hiragana-ka-review')).toMatchObject({
+      name: 'か行复习',
+      promptOrder: 'shuffled',
+      kanaTexts: ['あ', 'い', 'う', 'え', 'お', 'か', 'き', 'く', 'け', 'こ'],
     });
   });
 
@@ -135,6 +145,51 @@ describe('level catalog', () => {
     expect(katakanaCourse.levels.at(-1)?.name).toBe('ワ行复习');
   });
 
+  test('ships dakuon and youon courses with course-completed unlock gates', () => {
+    expect(getCourse('hiragana-dakuon').levels[0]?.unlock).toEqual({
+      type: 'course-completed',
+      courseId: 'hiragana-basic',
+    });
+    expect(getCourse('hiragana-youon').levels[0]?.unlock).toEqual({
+      type: 'course-completed',
+      courseId: 'hiragana-dakuon',
+    });
+    expect(getLevelById('hiragana-master')?.unlock).toEqual({
+      type: 'course-completed',
+      courseId: 'hiragana-youon',
+    });
+    expect(getCourse('hiragana-dakuon').levels).toHaveLength(10);
+    expect(getCourse('hiragana-youon').levels).toHaveLength(22);
+    expect(getLevelById('hiragana-ga')?.kanaTexts).toEqual(['が', 'ぎ', 'ぐ', 'げ', 'ご']);
+    expect(getLevelById('hiragana-k-yo')?.kanaTexts).toEqual(['きゃ', 'きゅ', 'きょ']);
+  });
+
+  test('ships master review levels with shuffled full-script prompts', () => {
+    const master = getLevelById('hiragana-master');
+
+    expect(master).toMatchObject({
+      name: '全表总复习',
+      promptOrder: 'shuffled',
+      courseId: 'hiragana-master',
+      displayMode: 'kana',
+    });
+    expect(master?.kanaTexts.length).toBeGreaterThan(46);
+  });
+
+  test('ships word courses unlocked after master completion', () => {
+    expect(getCourse('katakana-words').levels[0]?.unlock).toEqual({
+      type: 'course-completed',
+      courseId: 'katakana-master',
+    });
+    expect(getLevelById('katakana-word-coffee')).toMatchObject({
+      displayMode: 'word',
+      wordLabels: ['コーヒー'],
+      promptOrder: 'sequential',
+    });
+    expect(getCourse('katakana-words').levels).toHaveLength(10);
+    expect(getCourse('hiragana-words').levels).toHaveLength(10);
+  });
+
   test('ships the hiragana ka-row kana for the ka level', () => {
     expect(getLevelById('hiragana-ka')?.kanaTexts).toEqual(['か', 'き', 'く', 'け', 'こ']);
   });
@@ -152,6 +207,14 @@ describe('level catalog', () => {
           course.levels.some((candidate) => candidate.id === level.unlock.previousLevelId),
           `${level.id} unlocks from ${level.unlock.previousLevelId} in ${course.id}`,
         ).toBe(true);
+      }
+    }
+  });
+
+  test('keeps course-completed unlock references on known courses', () => {
+    for (const { level } of courseLevels()) {
+      if (level.unlock.type === 'course-completed') {
+        expect(() => getCourse(level.unlock.courseId)).not.toThrow();
       }
     }
   });

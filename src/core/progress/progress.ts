@@ -1,6 +1,6 @@
-import { getCourse, getLevelById } from '../learning-content/levelCatalog';
+import { getCourse, getLevelById, getSuccessorCourse } from '../learning-content/levelCatalog';
 import type { Level, UnlockRule } from '../learning-content/levelCatalog';
-import type { LevelId } from '../shared/ids';
+import type { CourseId, LevelId } from '../shared/ids';
 import { courseId, levelId } from '../shared/ids';
 import type { LevelResult, MistakeStat, ProgressSettings, ProgressState } from './model';
 
@@ -40,9 +40,59 @@ export function recordLevelResult(progress: ProgressState, result: LevelResult):
   });
 }
 
+export function recordMistake(
+  progress: ProgressState,
+  input: Pick<MistakeStat, 'kanaText' | 'expectedRomaji'> & { readonly occurredAt: number },
+): ProgressState {
+  validateMistakeInput(input);
+
+  const existingIndex = progress.mistakeStats.findIndex(
+    (stat) => stat.kanaText === input.kanaText && stat.expectedRomaji === input.expectedRomaji,
+  );
+  const mistakeStats =
+    existingIndex === -1
+      ? [
+          ...progress.mistakeStats,
+          Object.freeze({
+            kanaText: input.kanaText,
+            expectedRomaji: input.expectedRomaji,
+            count: 1,
+            lastMistakeAt: input.occurredAt,
+          }),
+        ]
+      : progress.mistakeStats.map((stat, index) =>
+          index === existingIndex
+            ? Object.freeze({
+                ...stat,
+                count: stat.count + 1,
+                lastMistakeAt: input.occurredAt,
+              })
+            : stat,
+        );
+
+  return freezeProgress({
+    ...progress,
+    mistakeStats,
+    levelResults: [...progress.levelResults],
+    settings: { ...progress.settings },
+  });
+}
+
+export function isCourseCompleted(progress: ProgressState, targetCourseId: CourseId): boolean {
+  const course = getCourse(targetCourseId);
+
+  return course.levels.every((level) =>
+    progress.levelResults.some((result) => result.levelId === level.id && result.passed === true),
+  );
+}
+
 export function isLevelUnlocked(progress: ProgressState, rule: UnlockRule): boolean {
   if (rule.type === 'always') {
     return true;
+  }
+
+  if (rule.type === 'course-completed') {
+    return isCourseCompleted(progress, rule.courseId);
   }
 
   return progress.levelResults.some((result) => result.levelId === rule.previousLevelId && result.passed === true);
@@ -61,6 +111,20 @@ export function getNextPlayableLevel(progress: ProgressState, currentLevelId: Le
 
     if (isLevelUnlocked(progress, level.unlock)) {
       return level;
+    }
+  }
+
+  if (isCourseCompleted(progress, progress.activeCourseId)) {
+    const successorCourseId = getSuccessorCourse(progress.activeCourseId);
+
+    if (successorCourseId !== undefined) {
+      const successorCourse = getCourse(successorCourseId);
+
+      for (const level of successorCourse.levels) {
+        if (isLevelUnlocked(progress, level.unlock)) {
+          return level;
+        }
+      }
     }
   }
 
@@ -133,6 +197,20 @@ function validateLevelResult(result: LevelResult): void {
 function validateNonEmptyId(value: string, fieldName: 'levelId' | 'courseId'): void {
   if (value.trim() === '') {
     throw new Error(`${fieldName} must not be empty`);
+  }
+}
+
+function validateMistakeInput(input: Pick<MistakeStat, 'kanaText' | 'expectedRomaji'> & { readonly occurredAt: number }): void {
+  if (input.kanaText.trim().length === 0) {
+    throw new Error('kanaText must not be empty');
+  }
+
+  if (input.expectedRomaji.trim().length === 0) {
+    throw new Error('expectedRomaji must not be empty');
+  }
+
+  if (!Number.isFinite(input.occurredAt)) {
+    throw new Error('occurredAt must be a finite timestamp');
   }
 }
 

@@ -1,15 +1,37 @@
 import { courseId, levelId } from '../shared/ids';
 import type { CourseId, LevelId } from '../shared/ids';
+import type { KanaScript } from './model';
+import { getAllKanaTexts } from './kanaCatalog';
+import {
+  buildWordGroups,
+  buildWordLabels,
+  flattenWordKanaTexts,
+} from './wordCatalog';
+import {
+  getDakuonChartRows,
+  getHandakuonChartRow,
+  getYouonChartRows,
+  type KanaChartRowDefinition,
+} from './kanaChartCatalog';
 
 export type UnlockRule =
   | { readonly type: 'always' }
-  | { readonly type: 'previous-level-passed'; readonly previousLevelId: LevelId };
+  | { readonly type: 'previous-level-passed'; readonly previousLevelId: LevelId }
+  | { readonly type: 'course-completed'; readonly courseId: CourseId };
+
+export type PromptOrder = 'sequential' | 'shuffled';
+export type DisplayMode = 'kana' | 'word';
 
 export interface Level {
   readonly id: LevelId;
   readonly courseId: CourseId;
   readonly name: string;
   readonly kanaTexts: readonly string[];
+  readonly displayMode: DisplayMode;
+  readonly wordIds?: readonly string[];
+  readonly wordLabels?: readonly string[];
+  readonly wordGroups?: readonly (readonly string[])[];
+  readonly promptOrder: PromptOrder;
   readonly passAccuracy: number;
   readonly maxMistakes: number;
   readonly unlock: UnlockRule;
@@ -28,33 +50,85 @@ interface RowDefinition {
   readonly kanaTexts: readonly string[];
 }
 
+interface WordRowDefinition {
+  readonly id: LevelId;
+  readonly reviewId: LevelId;
+  readonly name: string;
+  readonly wordIds: readonly string[];
+}
+
+interface BuildCourseLevelsOptions {
+  readonly firstLevelUnlock?: UnlockRule;
+}
+
 const passAccuracy = 0.9;
 const maxMistakes = 4;
+
+const hiraganaBasicCourseId = courseId('hiragana-basic');
+const katakanaBasicCourseId = courseId('katakana-basic');
+const hiraganaDakuonCourseId = courseId('hiragana-dakuon');
+const katakanaDakuonCourseId = courseId('katakana-dakuon');
+const hiraganaYouonCourseId = courseId('hiragana-youon');
+const katakanaYouonCourseId = courseId('katakana-youon');
+const hiraganaMasterCourseId = courseId('hiragana-master');
+const katakanaMasterCourseId = courseId('katakana-master');
+const hiraganaWordsCourseId = courseId('hiragana-words');
+const katakanaWordsCourseId = courseId('katakana-words');
+
+export const hiraganaCourseTrack: readonly CourseId[] = Object.freeze([
+  hiraganaBasicCourseId,
+  hiraganaDakuonCourseId,
+  hiraganaYouonCourseId,
+  hiraganaMasterCourseId,
+  hiraganaWordsCourseId,
+]);
+
+export const katakanaCourseTrack: readonly CourseId[] = Object.freeze([
+  katakanaBasicCourseId,
+  katakanaDakuonCourseId,
+  katakanaYouonCourseId,
+  katakanaMasterCourseId,
+  katakanaWordsCourseId,
+]);
 
 function freezeLevel(level: Level): Level {
   return Object.freeze({
     ...level,
     kanaTexts: Object.freeze([...level.kanaTexts]),
     unlock: Object.freeze({ ...level.unlock }),
+    ...(level.wordIds !== undefined ? { wordIds: Object.freeze([...level.wordIds]) } : {}),
+    ...(level.wordLabels !== undefined ? { wordLabels: Object.freeze([...level.wordLabels]) } : {}),
+    ...(level.wordGroups !== undefined
+      ? { wordGroups: Object.freeze(level.wordGroups.map((group) => Object.freeze([...group]))) }
+      : {}),
   });
 }
 
-function buildCourseLevels(course: CourseId, rows: readonly RowDefinition[]): readonly Level[] {
+function buildCourseLevels(
+  course: CourseId,
+  rows: readonly RowDefinition[],
+  options?: BuildCourseLevelsOptions,
+): readonly Level[] {
   const levels: Level[] = [];
   let previousReviewId: LevelId | undefined;
+  const accumulatedKana: string[] = [];
 
   for (const row of rows) {
+    accumulatedKana.push(...row.kanaTexts);
+
     levels.push(
       freezeLevel({
         id: row.id,
         courseId: course,
         name: row.name,
         kanaTexts: row.kanaTexts,
+        displayMode: 'kana',
+        promptOrder: 'sequential',
         passAccuracy,
         maxMistakes,
         unlock:
           previousReviewId === undefined
-            ? { type: 'always' }
+            ? (options?.firstLevelUnlock ?? { type: 'always' })
             : { type: 'previous-level-passed', previousLevelId: previousReviewId },
       }),
     );
@@ -63,7 +137,9 @@ function buildCourseLevels(course: CourseId, rows: readonly RowDefinition[]): re
         id: row.reviewId,
         courseId: course,
         name: `${row.name}复习`,
-        kanaTexts: row.kanaTexts,
+        kanaTexts: Object.freeze([...accumulatedKana]),
+        displayMode: 'kana',
+        promptOrder: 'shuffled',
         passAccuracy,
         maxMistakes,
         unlock: { type: 'previous-level-passed', previousLevelId: row.id },
@@ -75,8 +151,110 @@ function buildCourseLevels(course: CourseId, rows: readonly RowDefinition[]): re
   return Object.freeze(levels);
 }
 
-const hiraganaBasicCourseId = courseId('hiragana-basic');
-const katakanaBasicCourseId = courseId('katakana-basic');
+function buildWordCourseLevels(
+  course: CourseId,
+  rows: readonly WordRowDefinition[],
+  options?: BuildCourseLevelsOptions,
+): readonly Level[] {
+  const levels: Level[] = [];
+  let previousReviewId: LevelId | undefined;
+  const accumulatedWordIds: string[] = [];
+
+  for (const row of rows) {
+    accumulatedWordIds.push(...row.wordIds);
+    const wordIds = row.wordIds;
+    const reviewWordIds = [...accumulatedWordIds];
+
+    levels.push(
+      freezeLevel({
+        id: row.id,
+        courseId: course,
+        name: row.name,
+        kanaTexts: flattenWordKanaTexts(wordIds),
+        displayMode: 'word',
+        wordIds,
+        wordLabels: buildWordLabels(wordIds),
+        wordGroups: buildWordGroups(wordIds),
+        promptOrder: 'sequential',
+        passAccuracy,
+        maxMistakes,
+        unlock:
+          previousReviewId === undefined
+            ? (options?.firstLevelUnlock ?? { type: 'always' })
+            : { type: 'previous-level-passed', previousLevelId: previousReviewId },
+      }),
+    );
+    levels.push(
+      freezeLevel({
+        id: row.reviewId,
+        courseId: course,
+        name: `${row.name}复习`,
+        kanaTexts: flattenWordKanaTexts(reviewWordIds),
+        displayMode: 'word',
+        wordIds: Object.freeze([...reviewWordIds]),
+        wordLabels: buildWordLabels(reviewWordIds),
+        wordGroups: buildWordGroups(reviewWordIds),
+        promptOrder: 'shuffled',
+        passAccuracy,
+        maxMistakes,
+        unlock: { type: 'previous-level-passed', previousLevelId: row.id },
+      }),
+    );
+    previousReviewId = row.reviewId;
+  }
+
+  return Object.freeze(levels);
+}
+
+function chartRowsToLevelRows(scriptPrefix: 'hiragana' | 'katakana', chartRows: readonly KanaChartRowDefinition[]): readonly RowDefinition[] {
+  return Object.freeze(
+    chartRows.map((row) => ({
+      id: levelId(`${scriptPrefix}-${row.idPrefix}`),
+      reviewId: levelId(`${scriptPrefix}-${row.idPrefix}-review`),
+      name: row.label,
+      kanaTexts: Object.freeze(row.cells.map((cell) => cell.text)),
+    })),
+  );
+}
+
+function buildDakuonRows(script: KanaScript): readonly RowDefinition[] {
+  const scriptPrefix = script === 'hiragana' ? 'hiragana' : 'katakana';
+
+  return chartRowsToLevelRows(scriptPrefix, [...getDakuonChartRows(script), getHandakuonChartRow(script)]);
+}
+
+function buildYouonRows(script: KanaScript): readonly RowDefinition[] {
+  const scriptPrefix = script === 'hiragana' ? 'hiragana' : 'katakana';
+
+  return chartRowsToLevelRows(scriptPrefix, getYouonChartRows(script));
+}
+
+function buildMasterCourse(
+  course: CourseId,
+  script: KanaScript,
+  courseName: string,
+  unlockAfterCourseId: CourseId,
+): Course {
+  const scriptPrefix = script === 'hiragana' ? 'hiragana' : 'katakana';
+
+  return Object.freeze({
+    id: course,
+    name: courseName,
+    levels: Object.freeze([
+      freezeLevel({
+        id: levelId(`${scriptPrefix}-master`),
+        courseId: course,
+        name: '全表总复习',
+        kanaTexts: getAllKanaTexts(script),
+        displayMode: 'kana',
+        promptOrder: 'shuffled',
+        passAccuracy,
+        maxMistakes,
+        unlock: { type: 'course-completed', courseId: unlockAfterCourseId },
+      }),
+    ]),
+  });
+}
 
 const hiraganaRows: readonly RowDefinition[] = Object.freeze([
   {
@@ -204,6 +382,72 @@ const katakanaRows: readonly RowDefinition[] = Object.freeze([
   },
 ]);
 
+const katakanaWordRows: readonly WordRowDefinition[] = Object.freeze([
+  {
+    id: levelId('katakana-word-pan'),
+    reviewId: levelId('katakana-word-pan-review'),
+    name: 'パン',
+    wordIds: ['word-katakana-pan'],
+  },
+  {
+    id: levelId('katakana-word-pizza'),
+    reviewId: levelId('katakana-word-pizza-review'),
+    name: 'ピザ',
+    wordIds: ['word-katakana-pizza'],
+  },
+  {
+    id: levelId('katakana-word-coffee'),
+    reviewId: levelId('katakana-word-coffee-review'),
+    name: 'コーヒー',
+    wordIds: ['word-katakana-coffee'],
+  },
+  {
+    id: levelId('katakana-word-menu'),
+    reviewId: levelId('katakana-word-menu-review'),
+    name: 'メニュー',
+    wordIds: ['word-katakana-menu'],
+  },
+  {
+    id: levelId('katakana-word-tv'),
+    reviewId: levelId('katakana-word-tv-review'),
+    name: 'テレビ',
+    wordIds: ['word-katakana-tv'],
+  },
+]);
+
+const hiraganaWordRows: readonly WordRowDefinition[] = Object.freeze([
+  {
+    id: levelId('hiragana-word-arigatou'),
+    reviewId: levelId('hiragana-word-arigatou-review'),
+    name: 'ありがとう',
+    wordIds: ['word-hiragana-arigatou'],
+  },
+  {
+    id: levelId('hiragana-word-sumimasen'),
+    reviewId: levelId('hiragana-word-sumimasen-review'),
+    name: 'すみません',
+    wordIds: ['word-hiragana-sumimasen'],
+  },
+  {
+    id: levelId('hiragana-word-konnichiwa'),
+    reviewId: levelId('hiragana-word-konnichiwa-review'),
+    name: 'こんにちは',
+    wordIds: ['word-hiragana-konnichiwa'],
+  },
+  {
+    id: levelId('hiragana-word-sayounara'),
+    reviewId: levelId('hiragana-word-sayounara-review'),
+    name: 'さようなら',
+    wordIds: ['word-hiragana-sayounara'],
+  },
+  {
+    id: levelId('hiragana-word-ohayou'),
+    reviewId: levelId('hiragana-word-ohayou-review'),
+    name: 'おはよう',
+    wordIds: ['word-hiragana-ohayou'],
+  },
+]);
+
 export const courses: readonly Course[] = Object.freeze([
   Object.freeze({
     id: hiraganaBasicCourseId,
@@ -211,9 +455,53 @@ export const courses: readonly Course[] = Object.freeze([
     levels: buildCourseLevels(hiraganaBasicCourseId, hiraganaRows),
   }),
   Object.freeze({
+    id: hiraganaDakuonCourseId,
+    name: '平假名 - 浊音/半浊音',
+    levels: buildCourseLevels(hiraganaDakuonCourseId, buildDakuonRows('hiragana'), {
+      firstLevelUnlock: { type: 'course-completed', courseId: hiraganaBasicCourseId },
+    }),
+  }),
+  Object.freeze({
+    id: hiraganaYouonCourseId,
+    name: '平假名 - 拗音',
+    levels: buildCourseLevels(hiraganaYouonCourseId, buildYouonRows('hiragana'), {
+      firstLevelUnlock: { type: 'course-completed', courseId: hiraganaDakuonCourseId },
+    }),
+  }),
+  buildMasterCourse(hiraganaMasterCourseId, 'hiragana', '平假名 - 全表总复习', hiraganaYouonCourseId),
+  Object.freeze({
+    id: hiraganaWordsCourseId,
+    name: '平假名 - 假名词入门',
+    levels: buildWordCourseLevels(hiraganaWordsCourseId, hiraganaWordRows, {
+      firstLevelUnlock: { type: 'course-completed', courseId: hiraganaMasterCourseId },
+    }),
+  }),
+  Object.freeze({
     id: katakanaBasicCourseId,
     name: '片假名 - 基础',
     levels: buildCourseLevels(katakanaBasicCourseId, katakanaRows),
+  }),
+  Object.freeze({
+    id: katakanaDakuonCourseId,
+    name: '片假名 - 浊音/半浊音',
+    levels: buildCourseLevels(katakanaDakuonCourseId, buildDakuonRows('katakana'), {
+      firstLevelUnlock: { type: 'course-completed', courseId: katakanaBasicCourseId },
+    }),
+  }),
+  Object.freeze({
+    id: katakanaYouonCourseId,
+    name: '片假名 - 拗音',
+    levels: buildCourseLevels(katakanaYouonCourseId, buildYouonRows('katakana'), {
+      firstLevelUnlock: { type: 'course-completed', courseId: katakanaDakuonCourseId },
+    }),
+  }),
+  buildMasterCourse(katakanaMasterCourseId, 'katakana', '片假名 - 全表总复习', katakanaYouonCourseId),
+  Object.freeze({
+    id: katakanaWordsCourseId,
+    name: '片假名 - 假名词入门',
+    levels: buildWordCourseLevels(katakanaWordsCourseId, katakanaWordRows, {
+      firstLevelUnlock: { type: 'course-completed', courseId: katakanaMasterCourseId },
+    }),
   }),
 ]);
 
@@ -229,4 +517,16 @@ export function getCourse(id: string): Course {
 
 export function getLevelById(id: string): Level | undefined {
   return courses.flatMap((course) => course.levels).find((level) => level.id === id);
+}
+
+export function getSuccessorCourse(currentCourseId: CourseId): CourseId | undefined {
+  for (const track of [hiraganaCourseTrack, katakanaCourseTrack]) {
+    const index = track.indexOf(currentCourseId);
+
+    if (index >= 0 && index < track.length - 1) {
+      return track[index + 1];
+    }
+  }
+
+  return undefined;
 }
